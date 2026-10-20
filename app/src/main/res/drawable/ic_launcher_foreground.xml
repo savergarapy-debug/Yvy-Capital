@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Architectural Luxury Roofline & Pillars in Warm Gold-Beige -->
+    <path
+        android:fillColor="#E5D3B3"
+        android:pathData="M54,26 L26,48 L32,48 L32,76 L46,76 L46,56 L62,56 L62,76 L76,76 L76,48 L82,48 Z" />
+    <!-- Subtle Accent Terra Leaf / Horizon Line -->
+    <path
+        android:fillColor="#C8A97E"
+        android:pathData="M24,80 L84,80 L84,84 L24,84 Z" />
+    <path
+        android:fillColor="#133326"
+        android:pathData="M50,38 L58,38 L58,46 L50,46 Z" />
+</vector>

@@ -1,0 +1,143 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Perfil privado del usuario de Yvy Capital (cliente o asesor inmobiliario).",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID de Firebase Auth del usuario." },
+        "displayName": { "type": "string", "description": "Nombre completo del usuario." },
+        "email": { "type": "string", "description": "Correo electrónico del usuario." },
+        "phone": { "type": "string", "description": "Teléfono de contacto en formato paraguayo (+595...)." },
+        "preferredCurrency": { "type": "string", "enum": ["PYG", "USD"], "description": "Moneda preferida de visualización." },
+        "role": { "type": "string", "enum": ["CLIENT", "AGENT"], "description": "Rol operativo del usuario." },
+        "agencyName": { "type": "string", "description": "Nombre de la inmobiliaria o asesoría (para Yvy Capital Pro)." },
+        "planTier": { "type": "string", "enum": ["FREE", "PRO_MONTHLY", "PRO_ANNUAL"], "description": "Nivel de membresía Yvy Capital Pro." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Fecha de creación (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Fecha de actualización (FieldValue.serverTimestamp())." }
+      },
+      "required": ["userId", "displayName", "email", "preferredCurrency", "role", "planTier", "createdAt", "updatedAt"]
+    },
+    "Property": {
+      "title": "Property",
+      "description": "Inmueble publicado en el catálogo de Yvy Capital para venta o alquiler en Paraguay.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Título comercial de la propiedad." },
+        "description": { "type": "string", "description": "Descripción detallada del inmueble y entorno." },
+        "operationType": { "type": "string", "enum": ["SALE", "RENT"], "description": "Tipo de operación: Venta (SALE) o Alquiler (RENT)." },
+        "propertyType": { "type": "string", "enum": ["HOUSE", "APARTMENT", "LAND", "OFFICE", "COMMERCIAL", "ESTANCIA"], "description": "Categoría del inmueble." },
+        "price": { "type": "number", "description": "Precio en la moneda principal del anuncio." },
+        "currency": { "type": "string", "enum": ["PYG", "USD"], "description": "Moneda del precio (PYG o USD)." },
+        "department": { "type": "string", "description": "Departamento de Paraguay (Central, Asunción, Alto Paraná, Itapúa, Cordillera, etc.)." },
+        "city": { "type": "string", "description": "Ciudad o municipio (Asunción, Luque, San Bernardino, Ciudad del Este, Encarnación, etc.)." },
+        "neighborhood": { "type": "string", "description": "Barrio o zona (Villa Morra, Las Lomas,Ycua Satí, Centro, etc.)." },
+        "address": { "type": "string", "description": "Dirección referencial." },
+        "latitude": { "type": "number", "description": "Latitud geográfica." },
+        "longitude": { "type": "number", "description": "Longitud geográfica." },
+        "areaTotalM2": { "type": "integer", "description": "Superficie total en metros cuadrados." },
+        "areaBuiltM2": { "type": "integer", "description": "Superficie construida en metros cuadrados." },
+        "bedrooms": { "type": "integer", "description": "Cantidad de dormitorios." },
+        "bathrooms": { "type": "integer", "description": "Cantidad de baños." },
+        "parkingSpaces": { "type": "integer", "description": "Cantidad de cocheras/estacionamientos." },
+        "amenities": { "type": "array", "description": "Lista acotada de comodidades (Piscina, Quincho con parrilla, Seguridad 24h, Generador, etc.)." },
+        "imageUrls": { "type": "array", "description": "Lista de identificadores o URLs de fotografías de la propiedad." },
+        "featured": { "type": "boolean", "description": "Indica si es una propiedad destacada en portada." },
+        "status": { "type": "string", "enum": ["active", "reserved", "sold", "paused"], "description": "Estado de publicación." },
+        "agentId": { "type": "string", "description": "UID del asesor o usuario anunciante." },
+        "agentName": { "type": "string", "description": "Nombre público del asesor inmobiliario." },
+        "agentAgency": { "type": "string", "description": "Inmobiliaria o firma asesora." },
+        "agentWhatsapp": { "type": "string", "description": "Número público autorizado para contacto por WhatsApp (+595...)." },
+        "verified": { "type": "boolean", "description": "Indica si la propiedad fue revisada." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Sello temporal de publicación (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Sello temporal de última edición (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "title", "description", "operationType", "propertyType", "price", "currency",
+        "department", "city", "neighborhood", "address", "latitude", "longitude",
+        "areaTotalM2", "areaBuiltM2", "bedrooms", "bathrooms", "parkingSpaces",
+        "amenities", "imageUrls", "featured", "status", "agentId", "agentName",
+        "agentAgency", "agentWhatsapp", "verified", "createdAt", "updatedAt"
+      ]
+    },
+    "FavoriteItem": {
+      "title": "FavoriteItem",
+      "description": "Propiedad guardada en la lista de favoritos de un usuario.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID del usuario propietario del favorito." },
+        "propertyId": { "type": "string", "description": "ID del documento de la propiedad guardada." },
+        "title": { "type": "string", "description": "Título de la propiedad." },
+        "price": { "type": "number", "description": "Precio de referencia." },
+        "currency": { "type": "string", "enum": ["PYG", "USD"], "description": "Moneda del precio." },
+        "operationType": { "type": "string", "enum": ["SALE", "RENT"], "description": "Venta o alquiler." },
+        "propertyType": { "type": "string", "description": "Tipo de propiedad." },
+        "city": { "type": "string", "description": "Ciudad de la propiedad." },
+        "neighborhood": { "type": "string", "description": "Barrio de la propiedad." },
+        "areaTotalM2": { "type": "integer", "description": "Superficie total en m2." },
+        "bedrooms": { "type": "integer", "description": "Habitaciones." },
+        "bathrooms": { "type": "integer", "description": "Baños." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Fecha en que se guardó (FieldValue.serverTimestamp())." }
+      },
+      "required": ["userId", "propertyId", "title", "price", "currency", "operationType", "propertyType", "city", "neighborhood", "areaTotalM2", "bedrooms", "bathrooms", "createdAt"]
+    },
+    "PropertyInquiry": {
+      "title": "PropertyInquiry",
+      "description": "Consulta o solicitud de agendamiento de visita sobre una propiedad.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string", "description": "ID de la propiedad consultada." },
+        "propertyTitle": { "type": "string", "description": "Título de la propiedad consultada." },
+        "userId": { "type": "string", "description": "UID del cliente que realiza la consulta." },
+        "userName": { "type": "string", "description": "Nombre del solicitante." },
+        "userEmail": { "type": "string", "description": "Correo de contacto." },
+        "userPhone": { "type": "string", "description": "Teléfono / WhatsApp de contacto." },
+        "agentId": { "type": "string", "description": "UID del asesor responsable." },
+        "inquiryType": { "type": "string", "enum": ["INFO", "VISIT", "AVAILABILITY"], "description": "Tipo de solicitud: Información, Visita o Disponibilidad." },
+        "preferredDate": { "type": "string", "description": "Fecha y horario sugerido para visita." },
+        "message": { "type": "string", "description": "Mensaje detallado del interesado." },
+        "status": { "type": "string", "enum": ["PENDING", "CONTACTED", "VISIT_SCHEDULED", "CLOSED"], "description": "Estado de seguimiento de la solicitud." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Fecha de envío (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Última actualización (FieldValue.serverTimestamp())." }
+      },
+      "required": ["propertyId", "propertyTitle", "userId", "userName", "userEmail", "userPhone", "agentId", "inquiryType", "preferredDate", "message", "status", "createdAt", "updatedAt"]
+    },
+    "PropertyReport": {
+      "title": "PropertyReport",
+      "description": "Reporte o denuncia de un anuncio sospechoso o inexacto.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string", "description": "ID de la propiedad reportada." },
+        "propertyTitle": { "type": "string", "description": "Título de la propiedad." },
+        "reporterId": { "type": "string", "description": "UID del usuario que reporta." },
+        "reason": { "type": "string", "enum": ["FRAUD", "INACCURATE_PRICE", "DUPLICATE", "SOLD_UNAVAILABLE", "INAPPROPRIATE"], "description": "Motivo del reporte." },
+        "details": { "type": "string", "description": "Explicación adicional de la denuncia." },
+        "status": { "type": "string", "enum": ["OPEN", "REVIEWED", "DISMISSED"], "description": "Estado de moderación." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Fecha de reporte (FieldValue.serverTimestamp())." }
+      },
+      "required": ["propertyId", "propertyTitle", "reporterId", "reason", "details", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Perfiles privados de usuarios y configuración de cuenta / Yvy Capital Pro."
+    },
+    "/properties/{propertyId}": {
+      "schema": { "$ref": "#/entities/Property" },
+      "description": "Catálogo inmobiliario de propiedades en venta y alquiler en Paraguay."
+    },
+    "/users/{userId}/favorites/{propertyId}": {
+      "schema": { "$ref": "#/entities/FavoriteItem" },
+      "description": "Propiedades favoritas guardadas por cada usuario."
+    },
+    "/inquiries/{inquiryId}": {
+      "schema": { "$ref": "#/entities/PropertyInquiry" },
+      "description": "Consultas y solicitudes de visita enviadas por clientes a asesores."
+    },
+    "/reports/{reportId}": {
+      "schema": { "$ref": "#/entities/PropertyReport" },
+      "description": "Denuncias y reportes de moderación sobre anuncios inmobiliarios."
+    }
+  }
+}

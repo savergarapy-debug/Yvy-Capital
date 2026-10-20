@@ -1,0 +1,6 @@
+{
+  "name": "Yvy Capital",
+  "description": "Plataforma inmobiliaria premium para Paraguay: compra, alquiler y asesoría de propiedades con soporte en guaraníes (PYG) y dólares (USD).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
