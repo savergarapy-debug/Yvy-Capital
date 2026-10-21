@@ -136,8 +136,8 @@ fun FavoritesScreen(
                         }
                     } else {
                         LazyColumn(
-                            contentPadding = PaddingValues(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            contentPadding = PaddingValues(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
                             items(favItems, key = { it.propertyId }) { fav ->
@@ -160,7 +160,8 @@ fun FavoritesScreen(
                                     displayCurrency = displayCurrency,
                                     isFavorite = true,
                                     onCardClick = { onPropertyClick(resolvedProperty) },
-                                    onFavoriteClick = { onToggleFavorite(resolvedProperty) }
+                                    onFavoriteClick = { onToggleFavorite(resolvedProperty) },
+                                    compact = true
                                 )
                             }
                         }

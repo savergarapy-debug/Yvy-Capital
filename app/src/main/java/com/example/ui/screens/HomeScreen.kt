@@ -1,17 +1,26 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,27 +33,29 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apartment
 import androidx.compose.material.icons.filled.Business
-import androidx.compose.material.icons.filled.CurrencyExchange
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Landscape
+import androidx.compose.material.icons.filled.RealEstateAgent
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Villa
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,7 +63,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.FavoriteItem
 import com.example.data.model.Property
@@ -73,11 +86,13 @@ fun HomeScreen(
     onQuickOperationSelect: (String) -> Unit,
     onQuickCategorySelect: (String) -> Unit,
     onNavigateToExplore: () -> Unit,
+    onOpenExploreFilter: () -> Unit = onNavigateToExplore,
     onNavigateToFavorites: () -> Unit,
     onNavigateToPro: () -> Unit,
     onPropertyClick: (Property) -> Unit,
     onToggleFavorite: (Property) -> Unit,
-    onReloadDemo: () -> Unit
+    onReloadDemo: () -> Unit,
+    onOpenDeepLinkCenter: () -> Unit = {}
 ) {
     val favoriteIds = favorites.map { it.propertyId }.toSet()
 
@@ -85,10 +100,10 @@ fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .testTag("home_screen_list"),
-        contentPadding = PaddingValues(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        contentPadding = PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Hero Header con buscador destacado y selector de moneda PYG / USD
+        // 1. Hero Header con interruptor deslizante ₲ / $, buscador integrado con filtro y 3 accesos rápidos
         item {
             Box(
                 modifier = Modifier
@@ -98,110 +113,128 @@ fun HomeScreen(
                             colors = listOf(YvyForestDeep, YvyForestPrimary, YvyForestMedium)
                         )
                     )
-                    .padding(horizontal = 20.dp, vertical = 24.dp)
+                    .padding(horizontal = 18.dp, vertical = 20.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Yvy Capital",
-                                style = MaterialTheme.typography.headlineLarge,
-                                color = YvyBeigeWarm
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = YvyBeigeWarm,
+                                fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Inversiones & Raíces en Paraguay",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = YvyGoldAccent
+                                text = "Inversiones & Bienes Raíces",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = YvyGoldAccent,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
 
-                        // Currency Toggle Pill (PYG / USD)
-                        Surface(
-                            shape = CircleShape,
-                            color = Color.White.copy(alpha = 0.14f),
-                            modifier = Modifier
-                                .clickable {
-                                    val next = if (displayCurrency == "PYG") "USD" else "PYG"
-                                    onToggleCurrency(next)
-                                }
-                                .testTag("currency_toggle_chip")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CurrencyExchange,
-                                    contentDescription = "Cambiar moneda",
-                                    tint = YvyGoldAccent,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (displayCurrency == "PYG") "Moneda: PYG (Gs.)" else "Moneda: USD ($)",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
+                        // Compact Sliding Currency Switch (₲ / $)
+                        CurrencySlidingSwitch(
+                            selectedCurrency = displayCurrency,
+                            onSelectCurrency = onToggleCurrency
+                        )
                     }
 
                     Text(
-                        text = "Encuentra tu próximo hogar, oficina o inversión en Asunción, Central y todo el Paraguay.",
+                        text = "Encuentra tu próximo hogar, oficina o inversión en cualquier parte del Paraguay",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = YvyBeigeWarm.copy(alpha = 0.9f)
+                        color = YvyBeigeWarm.copy(alpha = 0.92f)
                     )
 
-                    // Prominent Search Bar Trigger
+                    // Unified Search Bar + Filter Button Module
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(onClick = onNavigateToExplore)
-                            .testTag("home_search_bar"),
+                            .height(52.dp),
                         shape = RoundedCornerShape(16.dp),
                         color = YvyBeigeWarm,
                         shadowElevation = 6.dp
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            modifier = Modifier.fillMaxSize(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Buscar propiedades",
-                                tint = YvyForestPrimary
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
+                            // Search Trigger Area
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clickable(onClick = onNavigateToExplore)
+                                    .padding(horizontal = 16.dp)
+                                    .testTag("home_search_bar"),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Buscar tu próxima propiedad",
+                                    tint = YvyForestPrimary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = "Buscar por ciudad, barrio o tipo...",
+                                    text = "Buscar tu próxima propiedad",
                                     style = MaterialTheme.typography.titleSmall,
-                                    color = YvyForestDeep
+                                    color = YvyForestDeep,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                                Text(
-                                    text = "Villa Morra • Las Lomas • San Bernardino • Luque • CDE",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = YvyForestDeep.copy(alpha = 0.65f)
-                                )
+                            }
+
+                            // Subtle Vertical Divider Line
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .height(28.dp)
+                                    .background(YvyForestDeep.copy(alpha = 0.16f))
+                            )
+
+                            // Integrated Filter Button (min 48.dp touch target)
+                            Box(
+                                modifier = Modifier
+                                    .width(54.dp)
+                                    .fillMaxHeight()
+                                    .clickable(
+                                        role = Role.Button,
+                                        onClick = onOpenExploreFilter
+                                    )
+                                    .testTag("home_filter_btn"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(YvyForestPrimary.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tune,
+                                        contentDescription = "Filtrar propiedades",
+                                        tint = YvyForestPrimary,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
                             }
                         }
                     }
 
-                    // Quick Operation Buttons: Comprar, Alquilar, Explorar, Favoritos
+                    // 3 Quick Access Buttons: Comprar, Alquilar, Favoritos (Removed "Enlace")
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         QuickActionButton(
                             label = "Comprar",
-                            subtitle = "Venta",
+                            subtitle = "En venta",
+                            icon = Icons.Default.RealEstateAgent,
                             onClick = { onQuickOperationSelect("SALE") },
                             modifier = Modifier
                                 .weight(1f)
@@ -209,7 +242,8 @@ fun HomeScreen(
                         )
                         QuickActionButton(
                             label = "Alquilar",
-                            subtitle = "Renta",
+                            subtitle = "En renta",
+                            icon = Icons.Default.Key,
                             onClick = { onQuickOperationSelect("RENT") },
                             modifier = Modifier
                                 .weight(1f)
@@ -218,6 +252,7 @@ fun HomeScreen(
                         QuickActionButton(
                             label = "Favoritos",
                             subtitle = "${favorites.size} guardados",
+                            icon = Icons.Default.Favorite,
                             onClick = onNavigateToFavorites,
                             modifier = Modifier
                                 .weight(1f)
@@ -228,14 +263,30 @@ fun HomeScreen(
             }
         }
 
-        // 2. Categorías Inmobiliarias
+        // 2. Categorías Inmobiliarias (Rediseñadas con estética moderna y limpia)
         item {
-            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                Text(
-                    text = "Categorías Inmobiliarias",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+            Column(modifier = Modifier.padding(horizontal = 18.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Categorías Inmobiliarias",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "Explorar catálogo",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onNavigateToExplore)
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier
@@ -253,14 +304,14 @@ fun HomeScreen(
             }
         }
 
-        // 3. Estado del Catálogo: Destacadas y Últimas Publicaciones
+        // 3. Estado del Catálogo: Propiedades Destacadas y Últimas Publicaciones
         when (propertiesState) {
             is UiState.Loading -> {
                 item {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 48.dp),
+                            .padding(vertical = 40.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -280,12 +331,12 @@ fun HomeScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp),
+                            .padding(horizontal = 18.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.errorContainer
                         )
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(18.dp)) {
                             Text(
                                 text = "No se pudo sincronizar el catálogo",
                                 style = MaterialTheme.typography.titleMedium,
@@ -308,18 +359,18 @@ fun HomeScreen(
 
             is UiState.Success -> {
                 val allProperties = propertiesState.data
-                val featuredList = allProperties.filter { it.featured }.ifEmpty { allProperties.take(3) }
+                val featuredList = allProperties.filter { it.featured }.ifEmpty { allProperties.take(4) }
 
                 if (allProperties.isEmpty()) {
                     item {
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp),
-                            shape = RoundedCornerShape(20.dp)
+                                .padding(horizontal = 18.dp),
+                            shape = RoundedCornerShape(18.dp)
                         ) {
                             Column(
-                                modifier = Modifier.padding(24.dp),
+                                modifier = Modifier.padding(22.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
@@ -328,10 +379,10 @@ fun HomeScreen(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Carga las propiedades iniciales de referencia en Asunción, San Bernardino, Luque, Ciudad del Este y Encarnación.",
+                                    text = "Carga las propiedades iniciales de referencia en distintos puntos del Paraguay.",
                                     style = MaterialTheme.typography.bodySmall
                                 )
-                                Spacer(modifier = Modifier.height(16.dp))
+                                Spacer(modifier = Modifier.height(14.dp))
                                 Button(
                                     onClick = onReloadDemo,
                                     modifier = Modifier.testTag("seed_demo_catalog_btn")
@@ -342,23 +393,24 @@ fun HomeScreen(
                         }
                     }
                 } else {
-                    // Propiedades Destacadas (Carrusel Horizontal)
+                    // Propiedades Destacadas (Carrusel Horizontal Compacto)
                     item {
                         Column {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 20.dp),
+                                    .padding(horizontal = 18.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
                                     Text(
                                         text = "Propiedades Destacadas",
-                                        style = MaterialTheme.typography.titleLarge
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "Selección premium en Asunción y Cordillera",
+                                        text = "Selección Premium de Propiedades",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -368,16 +420,17 @@ fun HomeScreen(
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
                                         .clickable(onClick = onNavigateToExplore)
-                                        .padding(8.dp)
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
                             LazyRow(
-                                contentPadding = PaddingValues(horizontal = 20.dp),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                contentPadding = PaddingValues(horizontal = 18.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 items(featuredList, key = { "featured_${it.id}" }) { prop ->
                                     PropertyCard(
@@ -386,29 +439,31 @@ fun HomeScreen(
                                         isFavorite = favoriteIds.contains(prop.id),
                                         onCardClick = { onPropertyClick(prop) },
                                         onFavoriteClick = { onToggleFavorite(prop) },
-                                        modifier = Modifier.width(310.dp)
+                                        compact = true,
+                                        modifier = Modifier.width(236.dp)
                                     )
                                 }
                             }
                         }
                     }
 
-                    // Últimas Publicaciones
+                    // Últimas Publicaciones (Cuadrícula compacta de 2 columnas para visualizar >= 2 propiedades simultáneamente)
                     item {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp),
+                                .padding(horizontal = 18.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
                                 Text(
                                     text = "Últimas Publicaciones",
-                                    style = MaterialTheme.typography.titleLarge
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Catálogo actualizado en tiempo real",
+                                    text = "Catálogo actualizado en todo el Paraguay",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -416,15 +471,31 @@ fun HomeScreen(
                         }
                     }
 
-                    items(allProperties, key = { "latest_${it.id}" }) { prop ->
-                        Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                            PropertyCard(
-                                property = prop,
-                                displayCurrency = displayCurrency,
-                                isFavorite = favoriteIds.contains(prop.id),
-                                onCardClick = { onPropertyClick(prop) },
-                                onFavoriteClick = { onToggleFavorite(prop) }
-                            )
+                    val pairedProperties = allProperties.chunked(2)
+                    items(
+                        items = pairedProperties,
+                        key = { pair -> "latest_row_${pair.first().id}" }
+                    ) { pair ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 18.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            pair.forEach { prop ->
+                                PropertyCard(
+                                    property = prop,
+                                    displayCurrency = displayCurrency,
+                                    isFavorite = favoriteIds.contains(prop.id),
+                                    onCardClick = { onPropertyClick(prop) },
+                                    onFavoriteClick = { onToggleFavorite(prop) },
+                                    compact = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (pair.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
                         }
                     }
                 }
@@ -436,14 +507,14 @@ fun HomeScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                shape = RoundedCornerShape(22.dp),
+                    .padding(horizontal = 18.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = YvyForestPrimary
                 )
             ) {
                 Column(
-                    modifier = Modifier.padding(22.dp),
+                    modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -451,13 +522,14 @@ fun HomeScreen(
                             imageVector = Icons.Default.SupportAgent,
                             contentDescription = "Yvy Capital Pro",
                             tint = YvyGoldAccent,
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(26.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             text = "Yvy Capital Pro • Asesores & Desarrolladoras",
                             style = MaterialTheme.typography.titleMedium,
-                            color = Color.White
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                     Text(
@@ -466,7 +538,7 @@ fun HomeScreen(
                         color = YvyBeigeWarm.copy(alpha = 0.88f)
                     )
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.padding(top = 4.dp)
                     ) {
                         Button(
@@ -479,8 +551,115 @@ fun HomeScreen(
                         ) {
                             Text("Abrir Espacio Asesor Pro", fontWeight = FontWeight.Bold)
                         }
+                        OutlinedButton(
+                            onClick = onOpenDeepLinkCenter,
+                            modifier = Modifier.testTag("home_deeplink_center_btn")
+                        ) {
+                            Text("Abrir Enlace Directo", color = YvyBeigeWarm)
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Interruptor deslizante moderno y minimalista para alternar entre Guaraníes (₲) y Dólares ($).
+ */
+@Composable
+private fun CurrencySlidingSwitch(
+    selectedCurrency: String,
+    onSelectCurrency: (String) -> Unit
+) {
+    val isUsd = selectedCurrency.uppercase() == "USD"
+    val indicatorOffset by animateDpAsState(
+        targetValue = if (isUsd) 42.dp else 0.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "currency_slide_offset"
+    )
+
+    val pygTextColor by animateColorAsState(
+        targetValue = if (!isUsd) YvyForestDeep else Color.White.copy(alpha = 0.78f),
+        label = "pyg_text_color"
+    )
+    val usdTextColor by animateColorAsState(
+        targetValue = if (isUsd) YvyForestDeep else Color.White.copy(alpha = 0.78f),
+        label = "usd_text_color"
+    )
+
+    Box(
+        modifier = Modifier
+            .width(88.dp)
+            .height(38.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.28f))
+            .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Switch,
+                onClick = {
+                    val next = if (isUsd) "PYG" else "USD"
+                    onSelectCurrency(next)
+                }
+            )
+            .padding(3.dp)
+            .testTag("currency_toggle_chip")
+    ) {
+        // Animated Sliding Pill
+        Box(
+            modifier = Modifier
+                .offset(x = indicatorOffset)
+                .width(40.dp)
+                .fillMaxHeight()
+                .clip(CircleShape)
+                .background(YvyGoldAccent)
+        )
+
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { if (isUsd) onSelectCurrency("PYG") }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "₲",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = pygTextColor
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { if (!isUsd) onSelectCurrency("USD") }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "$",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = usdTextColor
+                )
             }
         }
     }
@@ -490,6 +669,7 @@ fun HomeScreen(
 private fun QuickActionButton(
     label: String,
     subtitle: String,
+    icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -497,24 +677,46 @@ private fun QuickActionButton(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick),
-        color = Color.White.copy(alpha = 0.14f),
-        shape = RoundedCornerShape(14.dp)
+        color = Color.White.copy(alpha = 0.13f),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f))
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.titleSmall,
-                color = Color.White,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.labelSmall,
-                color = YvyGoldAccent
-            )
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(YvyGoldAccent.copy(alpha = 0.22f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = YvyGoldAccent,
+                    modifier = Modifier.size(15.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(7.dp))
+            Column {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = YvyBeigeWarm.copy(alpha = 0.82f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -525,28 +727,44 @@ private fun CategoryChip(
     icon: ImageVector,
     onClick: () -> Unit
 ) {
-    FilterChip(
-        selected = false,
-        onClick = onClick,
-        label = {
+    Surface(
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp,
+        shadowElevation = 1.dp,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(vertical = 4.dp)
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
             )
-        },
-        leadingIcon = {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                modifier = Modifier.size(18.dp)
-            )
-        },
-        shape = RoundedCornerShape(12.dp),
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            labelColor = MaterialTheme.colorScheme.onSurface,
-            iconColor = MaterialTheme.colorScheme.primary
-        )
-    )
+        }
+    }
 }

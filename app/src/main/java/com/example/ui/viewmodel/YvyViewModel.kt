@@ -1,15 +1,21 @@
 package com.example.ui.viewmodel
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.model.AdvisorMemberships
 import com.example.data.model.FavoriteItem
 import com.example.data.model.Property
 import com.example.data.model.PropertyFilter
 import com.example.data.model.PropertyInquiry
+import com.example.data.model.PropertyPromoVideo
 import com.example.data.model.UserProfile
 import com.example.data.repository.YvyRepository
 import com.example.ui.util.CurrencyFormatter
+import com.example.ui.util.DeepLinkHandler
+import com.example.ui.util.DeepLinkTarget
+import com.example.ui.util.PromoVideoGenerator
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +33,18 @@ sealed interface UiState<out T> {
     data object Loading : UiState<Nothing>
     data class Success<T>(val data: T) : UiState<T>
     data class Error(val message: String) : UiState<Nothing>
+}
+
+sealed interface DeepLinkResolutionState {
+    data object Idle : DeepLinkResolutionState
+    data class Resolving(val rawUrl: String) : DeepLinkResolutionState
+    data class ResolvedProperty(val property: Property, val rawUrl: String) : DeepLinkResolutionState
+    data class ResolvedExplore(val summaryMessage: String) : DeepLinkResolutionState
+    data class NotFoundOrUnavailable(
+        val rawUrl: String,
+        val title: String,
+        val message: String
+    ) : DeepLinkResolutionState
 }
 
 class YvyViewModel(
@@ -51,6 +69,9 @@ class YvyViewModel(
 
     private val _isBusy = MutableStateFlow(false)
     val isBusy: StateFlow<Boolean> = _isBusy.asStateFlow()
+
+    private val _deepLinkResolution = MutableStateFlow<DeepLinkResolutionState>(DeepLinkResolutionState.Idle)
+    val deepLinkResolution: StateFlow<DeepLinkResolutionState> = _deepLinkResolution.asStateFlow()
 
     // 1. Catálogo de propiedades activas en tiempo real
     val propertiesState: StateFlow<UiState<List<Property>>> = repository.observeActiveProperties()
@@ -177,6 +198,21 @@ class YvyViewModel(
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
             initialValue = UiState.Loading
         )
+
+    // 7. Videos promocionales generados por el asesor (Exclusivo Plan Senior)
+    val agentPromoVideosState: StateFlow<UiState<List<PropertyPromoVideo>>> = repository.observeAgentPromoVideos(currentUserId)
+        .map<List<PropertyPromoVideo>, UiState<List<PropertyPromoVideo>>> { UiState.Success(it) }
+        .catch { error ->
+            Log.w(TAG, "Error observing agent promo videos", error)
+            emit(UiState.Error(error.localizedMessage ?: "Error al cargar videos promocionales."))
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            initialValue = UiState.Loading
+        )
+
+    private val viewedPropertyIdsInSession = mutableSetOf<String>()
 
     init {
         initializeUserAndCatalog()
@@ -321,6 +357,62 @@ class YvyViewModel(
         }
     }
 
+    fun recordPropertyView(propertyId: String) {
+        if (propertyId.isBlank() || !viewedPropertyIdsInSession.add(propertyId)) return
+        viewModelScope.launch {
+            repository.incrementPropertyViews(propertyId)
+        }
+    }
+
+    fun activateAdvisorPlan(
+        planTier: String,
+        displayName: String,
+        phone: String,
+        agencyName: String,
+        externalAgentMode: Boolean,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            val email = Firebase.auth.currentUser?.email ?: "asesor@yvycapital.com.py"
+            repository.activateAdvisorMembership(
+                planTier = planTier,
+                displayName = displayName,
+                email = email,
+                phone = phone,
+                agencyName = agencyName,
+                externalAgentMode = externalAgentMode
+            ).onSuccess {
+                _isBusy.value = false
+                val planLabel = AdvisorMemberships.displayNameForTier(planTier)
+                _actionMessage.value = "¡Membresía activada con éxito! Ahora cuentas con el $planLabel."
+                onSuccess()
+            }.onFailure { err ->
+                _isBusy.value = false
+                _actionMessage.value = err.localizedMessage ?: "No se pudo activar el plan de asesor."
+            }
+        }
+    }
+
+    fun toggleExternalAgentMode(enabled: Boolean) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            repository.updateExternalAgentMode(enabled)
+                .onSuccess {
+                    _isBusy.value = false
+                    _actionMessage.value = if (enabled) {
+                        "Modalidad de Agente Inmobiliario Externo activada."
+                    } else {
+                        "Modalidad de Agente Inmobiliario Externo desactivada."
+                    }
+                }
+                .onFailure { err ->
+                    _isBusy.value = false
+                    _actionMessage.value = err.localizedMessage ?: "No se pudo cambiar la modalidad de agente externo."
+                }
+        }
+    }
+
     fun saveUserProfile(
         displayName: String,
         phone: String,
@@ -366,6 +458,7 @@ class YvyViewModel(
         bathrooms: Long,
         parkingSpaces: Long,
         amenities: List<String>,
+        featured: Boolean = false,
         agentName: String,
         agentAgency: String,
         agentWhatsapp: String,
@@ -373,6 +466,8 @@ class YvyViewModel(
     ) {
         viewModelScope.launch {
             _isBusy.value = true
+            val currentProfile = (userProfileState.value as? UiState.Success)?.data
+            val canFeature = AdvisorMemberships.canFeatureForTier(currentProfile?.planTier)
             val newProperty = Property(
                 title = title.trim(),
                 description = description.trim(),
@@ -393,13 +488,14 @@ class YvyViewModel(
                 parkingSpaces = parkingSpaces.coerceAtLeast(0L),
                 amenities = amenities.take(15),
                 imageUrls = listOf("custom_listing"),
-                featured = false,
+                featured = featured && canFeature,
                 status = "active",
                 agentId = currentUserId,
                 agentName = agentName.trim().ifBlank { "Asesor Yvy Capital Pro" },
                 agentAgency = agentAgency.trim().ifBlank { "Yvy Capital Pro" },
                 agentWhatsapp = agentWhatsapp.trim().ifBlank { "+595981000000" },
-                verified = true
+                verified = true,
+                viewsCount = 0L
             )
             repository.createProperty(newProperty)
                 .onSuccess {
@@ -410,6 +506,67 @@ class YvyViewModel(
                 .onFailure { err ->
                     _isBusy.value = false
                     _actionMessage.value = err.localizedMessage ?: "Error al publicar la propiedad."
+                }
+        }
+    }
+
+    fun generateAndSavePromoVideo(
+        context: Context,
+        property: Property,
+        aspectRatio: String,
+        selectedImages: List<String>,
+        includeBackgroundMusic: Boolean,
+        customHeadline: String,
+        preferAiInteractions: Boolean,
+        onProgress: (String) -> Unit = {},
+        onSuccess: (PropertyPromoVideo) -> Unit
+    ) {
+        val currentProfile = (userProfileState.value as? UiState.Success)?.data
+        if (!AdvisorMemberships.isSeniorTier(currentProfile?.planTier)) {
+            _actionMessage.value = "El Generador de Videos Promocionales es exclusivo para asesores con Plan Senior (G. 249.000/mes)."
+            return
+        }
+
+        viewModelScope.launch {
+            _isBusy.value = true
+            PromoVideoGenerator.generatePropertyPromoVideo(
+                context = context,
+                property = property,
+                agentId = currentUserId,
+                aspectRatio = aspectRatio,
+                selectedImages = selectedImages,
+                includeBackgroundMusic = includeBackgroundMusic,
+                customHeadline = customHeadline,
+                preferAiInteractions = preferAiInteractions,
+                displayCurrency = _displayCurrency.value,
+                onProgress = onProgress
+            ).onSuccess { generatedVideo ->
+                repository.createPromoVideo(generatedVideo)
+                    .onSuccess { savedId ->
+                        _isBusy.value = false
+                        val savedVideo = generatedVideo.copy(id = savedId)
+                        _actionMessage.value = "Video promocional MP4 generado y guardado exitosamente."
+                        onSuccess(savedVideo)
+                    }
+                    .onFailure { err ->
+                        _isBusy.value = false
+                        _actionMessage.value = err.localizedMessage ?: "Error al registrar el video en el servidor."
+                    }
+            }.onFailure { err ->
+                _isBusy.value = false
+                _actionMessage.value = err.localizedMessage ?: "No se pudo generar el video promocional."
+            }
+        }
+    }
+
+    fun deletePromoVideo(videoId: String) {
+        viewModelScope.launch {
+            repository.deletePromoVideo(videoId)
+                .onSuccess {
+                    _actionMessage.value = "Video promocional eliminado."
+                }
+                .onFailure { err ->
+                    _actionMessage.value = err.localizedMessage ?: "No se pudo eliminar el video."
                 }
         }
     }
@@ -460,9 +617,86 @@ class YvyViewModel(
         }
     }
 
+    fun showMessage(message: String) {
+        _actionMessage.value = message
+    }
+
+    fun clearDeepLinkResolution() {
+        _deepLinkResolution.value = DeepLinkResolutionState.Idle
+    }
+
+    fun resolveDeepLink(rawInput: String) {
+        val target = DeepLinkHandler.parseRawString(rawInput) ?: return
+        viewModelScope.launch {
+            _deepLinkResolution.value = DeepLinkResolutionState.Resolving(target.rawUrl)
+            when (target) {
+                is DeepLinkTarget.PropertyDetail -> {
+                    val cachedList = (propertiesState.value as? UiState.Success)?.data ?: emptyList()
+                    val fromCache = cachedList.firstOrNull { it.id == target.propertyId && it.status == "active" }
+                    if (fromCache != null) {
+                        _deepLinkResolution.value = DeepLinkResolutionState.ResolvedProperty(fromCache, target.rawUrl)
+                        return@launch
+                    }
+
+                    // Si es un ID del catálogo inicial y aún no terminó de poblarse, asegurar semilla primero
+                    if (target.propertyId.startsWith("demo-") && cachedList.isEmpty()) {
+                        repository.seedParaguayCatalogIfEmpty()
+                    }
+
+                    val fetched = repository.getPropertyById(target.propertyId).getOrNull()
+                    if (fetched != null && fetched.status == "active") {
+                        _deepLinkResolution.value = DeepLinkResolutionState.ResolvedProperty(fetched, target.rawUrl)
+                    } else if (fetched != null && fetched.status != "active") {
+                        _deepLinkResolution.value = DeepLinkResolutionState.NotFoundOrUnavailable(
+                            rawUrl = target.rawUrl,
+                            title = "Propiedad ya no disponible",
+                            message = "El inmueble \"${fetched.title}\" fue pausado, reservado o retirado del catálogo activo de Yvy Capital."
+                        )
+                    } else {
+                        _deepLinkResolution.value = DeepLinkResolutionState.NotFoundOrUnavailable(
+                            rawUrl = target.rawUrl,
+                            title = "Propiedad no encontrada",
+                            message = "La propiedad compartida (${target.propertyId}) fue eliminada, despublicada o el enlace ya no existe en Yvy Capital."
+                        )
+                    }
+                }
+
+                is DeepLinkTarget.AdvisorCatalog -> {
+                    val queryTerm = target.agentName?.takeIf { it.isNotBlank() } ?: target.agentId
+                    _filter.value = PropertyFilter(searchQuery = queryTerm)
+                    _visibleCount.value = PAGE_SIZE
+                    _deepLinkResolution.value = DeepLinkResolutionState.ResolvedExplore(
+                        summaryMessage = "Mostrando cartera compartida del asesor: $queryTerm"
+                    )
+                }
+
+                is DeepLinkTarget.ExploreFiltered -> {
+                    _filter.value = PropertyFilter(
+                        department = target.department,
+                        operationType = target.operationType,
+                        propertyType = target.propertyType,
+                        searchQuery = target.searchQuery
+                    )
+                    _visibleCount.value = PAGE_SIZE
+                    _deepLinkResolution.value = DeepLinkResolutionState.ResolvedExplore(
+                        summaryMessage = "Filtro aplicado desde enlace directo compartido"
+                    )
+                }
+
+                is DeepLinkTarget.InvalidLink -> {
+                    _deepLinkResolution.value = DeepLinkResolutionState.NotFoundOrUnavailable(
+                        rawUrl = target.rawUrl,
+                        title = "Enlace directo no válido",
+                        message = target.reason
+                    )
+                }
+            }
+        }
+    }
+
     private companion object {
         const val TAG = "YvyViewModel"
         const val STOP_TIMEOUT_MILLIS = 5000L
-        const val PAGE_SIZE = 4
+        const val PAGE_SIZE = 8
     }
 }

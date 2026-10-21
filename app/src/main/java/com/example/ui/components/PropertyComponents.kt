@@ -3,6 +3,7 @@ package com.example.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,16 +27,18 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SquareFoot
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,7 +48,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -56,11 +62,12 @@ import com.example.ui.theme.YvyForestMedium
 import com.example.ui.theme.YvyForestPrimary
 import com.example.ui.theme.YvyGoldAccent
 import com.example.ui.util.CurrencyFormatter
+import com.example.ui.util.DeepLinkHandler
 
 @Composable
 fun PropertyArtworkHeader(
     property: Property,
-    height: Dp = 195.dp,
+    height: Dp = 128.dp,
     variantIndex: Int = 0
 ) {
     val palette = when ((property.id.hashCode() + variantIndex) % 4) {
@@ -90,7 +97,6 @@ fun PropertyArtworkHeader(
             // Architectural skyline / villa silhouette depending on propertyType
             when (property.propertyType.uppercase()) {
                 "APARTMENT", "OFFICE" -> {
-                    // Modern high-rise towers in Villa Morra / Santa Teresa
                     drawRect(
                         color = Color.White.copy(alpha = 0.12f),
                         topLeft = Offset(w * 0.12f, h * 0.28f),
@@ -106,7 +112,6 @@ fun PropertyArtworkHeader(
                         topLeft = Offset(w * 0.66f, h * 0.38f),
                         size = Size(w * 0.20f, h * 0.62f)
                     )
-                    // Warm lit windows
                     for (r in 0..4) {
                         for (c in 0..2) {
                             drawRect(
@@ -118,7 +123,6 @@ fun PropertyArtworkHeader(
                     }
                 }
                 "LAND", "ESTANCIA" -> {
-                    // Rolling hills & waterfront reflection (San Bernardino / Costanera)
                     val hillPath = Path().apply {
                         moveTo(0f, h * 0.72f)
                         quadraticTo(w * 0.3f, h * 0.48f, w * 0.62f, h * 0.68f)
@@ -128,7 +132,6 @@ fun PropertyArtworkHeader(
                         close()
                     }
                     drawPath(hillPath, color = YvyForestDeep.copy(alpha = 0.45f))
-                    // Water reflection lines
                     for (i in 1..4) {
                         drawLine(
                             color = YvyGoldAccent.copy(alpha = 0.35f),
@@ -139,7 +142,6 @@ fun PropertyArtworkHeader(
                     }
                 }
                 else -> {
-                    // Contemporary tropical residence with pergola & pool
                     val roof = Path().apply {
                         moveTo(w * 0.14f, h * 0.52f)
                         lineTo(w * 0.48f, h * 0.26f)
@@ -157,7 +159,6 @@ fun PropertyArtworkHeader(
                         topLeft = Offset(w * 0.28f, h * 0.58f),
                         size = Size(w * 0.22f, h * 0.24f)
                     )
-                    // Pool foreground
                     drawRect(
                         color = Color(0xFF4EA8DE).copy(alpha = 0.26f),
                         topLeft = Offset(w * 0.15f, h * 0.86f),
@@ -167,16 +168,16 @@ fun PropertyArtworkHeader(
             }
         }
 
-        // Bottom dark scrim for readability
+        // Bottom dark scrim for clean price and icon readability
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = 0.25f),
+                            Color.Black.copy(alpha = 0.28f),
                             Color.Transparent,
-                            Color.Black.copy(alpha = 0.65f)
+                            Color.Black.copy(alpha = 0.68f)
                         )
                     )
                 )
@@ -195,83 +196,162 @@ fun PropertyCard(
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
+    val context = LocalContext.current
+    val imageHeight = if (compact) 108.dp else 124.dp
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onCardClick)
             .testTag("property_card_${property.id}"),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
             Box {
                 PropertyArtworkHeader(
                     property = property,
-                    height = if (compact) 140.dp else 190.dp
+                    height = imageHeight
                 )
 
-                // Top Badges Row
+                // Top Row: Badges on left, Discreet Share + Pure Heart Icon on right
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Top
                 ) {
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 2.dp, start = 2.dp)
                     ) {
                         Surface(
                             color = if (property.operationType == "SALE") YvyForestPrimary else YvyGoldAccent,
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(6.dp)
                         ) {
                             Text(
                                 text = CurrencyFormatter.operationLabel(property.operationType),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = if (property.operationType == "SALE") Color.White else YvyForestDeep,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                             )
                         }
 
-                        Surface(
-                            color = Color.Black.copy(alpha = 0.55f),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = CurrencyFormatter.propertyTypeLabel(property.propertyType),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                            )
+                        if (!compact) {
+                            Surface(
+                                color = Color.Black.copy(alpha = 0.50f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = CurrencyFormatter.propertyTypeLabel(property.propertyType),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                )
+                            }
                         }
                     }
 
-                    IconButton(
-                        onClick = onFavoriteClick,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.45f))
-                            .testTag("favorite_btn_${property.id}")
+                    // Top-Right Actions: Discreet Share + Pure Heart (without dark circle)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = if (isFavorite) "Quitar de favoritos" else "Guardar en favoritos",
-                            tint = if (isFavorite) Color(0xFFFF6B6B) else Color.White
-                        )
+                        // Discreet, compact Share button
+                        Box(
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    role = Role.Button,
+                                    onClick = {
+                                        DeepLinkHandler.shareProperty(context, property, displayCurrency)
+                                    }
+                                )
+                                .testTag("share_card_btn_${property.id}"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.28f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = "Compartir propiedad",
+                                    tint = Color.White.copy(alpha = 0.92f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+
+                        // Favorite Heart Button: NO dark circular background or circular border.
+                        // Pure heart icon with white outline when unselected and filled heart when selected.
+                        Box(
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    role = Role.Button,
+                                    onClick = onFavoriteClick
+                                )
+                                .testTag("favorite_btn_${property.id}"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            // Subtle drop-shadow icon layer for contrast on bright photos (no circle)
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = null,
+                                tint = Color.Black.copy(alpha = 0.50f),
+                                modifier = Modifier
+                                    .size(23.dp)
+                                    .offset(x = 0.8.dp, y = 1.dp)
+                            )
+                            if (isFavorite) {
+                                // Filled heart + crisp white perimeter
+                                Icon(
+                                    imageVector = Icons.Default.Favorite,
+                                    contentDescription = "Quitar de favoritos",
+                                    tint = Color(0xFFFF5252),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.FavoriteBorder,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            } else {
+                                // Only white outline heart when not favorite
+                                Icon(
+                                    imageVector = Icons.Default.FavoriteBorder,
+                                    contentDescription = "Guardar en favoritos",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
                     }
                 }
 
-                // Bottom Overlay Price inside Image
-                Column(
+                // Bottom Overlay Price inside Image (SINGLE CURRENCY ONLY)
+                Row(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(14.dp)
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
                 ) {
                     Text(
                         text = CurrencyFormatter.formatPrice(
@@ -279,26 +359,34 @@ fun PropertyCard(
                             sourceCurrency = property.currency,
                             displayCurrency = displayCurrency
                         ),
-                        style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall,
+                        style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                         color = Color.White,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    if (!compact) {
-                        Text(
-                            text = CurrencyFormatter.formatSecondaryPrice(
-                                amount = property.price,
-                                sourceCurrency = property.currency
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = YvyGoldAccent
-                        )
+
+                    if (compact) {
+                        Surface(
+                            color = Color.Black.copy(alpha = 0.48f),
+                            shape = RoundedCornerShape(5.dp)
+                        ) {
+                            Text(
+                                text = CurrencyFormatter.propertyTypeLabel(property.propertyType),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = YvyBeigeWarm,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
             }
 
+            // Compact Card Content Body
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -307,18 +395,19 @@ fun PropertyCard(
                 ) {
                     Text(
                         text = property.title,
-                        style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
-                        maxLines = if (compact) 1 else 2,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
                     if (property.verified) {
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Icon(
                             imageVector = Icons.Default.Verified,
                             contentDescription = "Propiedad Verificada",
                             tint = YvyForestMedium,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                 }
@@ -328,22 +417,26 @@ fun PropertyCard(
                         imageVector = Icons.Default.LocationOn,
                         contentDescription = "Ubicación",
                         tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(13.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = "${property.neighborhood}, ${property.city} (${property.department})",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = if (compact) {
+                            "${property.neighborhood}, ${property.city}"
+                        } else {
+                            "${property.neighborhood}, ${property.city} (${property.department})"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                // Key Metrics Row
+                // Compact Key Metrics Row
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     MetricBadge(
                         icon = Icons.Default.SquareFoot,
@@ -358,7 +451,7 @@ fun PropertyCard(
                     if (property.bathrooms > 0) {
                         MetricBadge(
                             icon = Icons.Default.Bathtub,
-                            text = "${property.bathrooms} baños"
+                            text = "${property.bathrooms} b."
                         )
                     }
                     if (!compact && property.parkingSpaces > 0) {
@@ -381,21 +474,22 @@ fun MetricBadge(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(6.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(14.dp)
+            modifier = Modifier.size(12.dp)
         )
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(3.dp))
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1
         )
     }
 }

@@ -2,7 +2,7 @@
   "entities": {
     "UserProfile": {
       "title": "UserProfile",
-      "description": "Perfil privado del usuario de Yvy Capital (cliente o asesor inmobiliario).",
+      "description": "Perfil privado del usuario de Yvy Capital (cliente o asesor inmobiliario con plan de membresía).",
       "type": "object",
       "properties": {
         "userId": { "type": "string", "description": "UID de Firebase Auth del usuario." },
@@ -12,7 +12,9 @@
         "preferredCurrency": { "type": "string", "enum": ["PYG", "USD"], "description": "Moneda preferida de visualización." },
         "role": { "type": "string", "enum": ["CLIENT", "AGENT"], "description": "Rol operativo del usuario." },
         "agencyName": { "type": "string", "description": "Nombre de la inmobiliaria o asesoría (para Yvy Capital Pro)." },
-        "planTier": { "type": "string", "enum": ["FREE", "PRO_MONTHLY", "PRO_ANNUAL"], "description": "Nivel de membresía Yvy Capital Pro." },
+        "planTier": { "type": "string", "enum": ["FREE", "PLAN_INICIAL", "PLAN_INTERMEDIO", "PLAN_SENIOR", "PRO_MONTHLY", "PRO_ANNUAL"], "description": "Nivel de membresía de asesor inmobiliario en Yvy Capital." },
+        "activeListingsCount": { "type": "integer", "description": "Cantidad de publicaciones activas del asesor para control de límite por plan." },
+        "externalAgentMode": { "type": "boolean", "description": "Modalidad de agente inmobiliario externo a Yvy Capital (disponible en Plan Intermedio y Plan Senior)." },
         "createdAt": { "type": "string", "format": "date-time", "description": "Fecha de creación (FieldValue.serverTimestamp())." },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Fecha de actualización (FieldValue.serverTimestamp())." }
       },
@@ -31,7 +33,7 @@
         "currency": { "type": "string", "enum": ["PYG", "USD"], "description": "Moneda del precio (PYG o USD)." },
         "department": { "type": "string", "description": "Departamento de Paraguay (Central, Asunción, Alto Paraná, Itapúa, Cordillera, etc.)." },
         "city": { "type": "string", "description": "Ciudad o municipio (Asunción, Luque, San Bernardino, Ciudad del Este, Encarnación, etc.)." },
-        "neighborhood": { "type": "string", "description": "Barrio o zona (Villa Morra, Las Lomas,Ycua Satí, Centro, etc.)." },
+        "neighborhood": { "type": "string", "description": "Barrio o zona (Villa Morra, Las Lomas, Ycua Satí, Centro, etc.)." },
         "address": { "type": "string", "description": "Dirección referencial." },
         "latitude": { "type": "number", "description": "Latitud geográfica." },
         "longitude": { "type": "number", "description": "Longitud geográfica." },
@@ -42,13 +44,14 @@
         "parkingSpaces": { "type": "integer", "description": "Cantidad de cocheras/estacionamientos." },
         "amenities": { "type": "array", "description": "Lista acotada de comodidades (Piscina, Quincho con parrilla, Seguridad 24h, Generador, etc.)." },
         "imageUrls": { "type": "array", "description": "Lista de identificadores o URLs de fotografías de la propiedad." },
-        "featured": { "type": "boolean", "description": "Indica si es una propiedad destacada en portada." },
+        "featured": { "type": "boolean", "description": "Indica si es una propiedad destacada en portada (habilitado en Plan Intermedio y Senior)." },
         "status": { "type": "string", "enum": ["active", "reserved", "sold", "paused"], "description": "Estado de publicación." },
         "agentId": { "type": "string", "description": "UID del asesor o usuario anunciante." },
         "agentName": { "type": "string", "description": "Nombre público del asesor inmobiliario." },
         "agentAgency": { "type": "string", "description": "Inmobiliaria o firma asesora." },
         "agentWhatsapp": { "type": "string", "description": "Número público autorizado para contacto por WhatsApp (+595...)." },
         "verified": { "type": "boolean", "description": "Indica si la propiedad fue revisada." },
+        "viewsCount": { "type": "integer", "description": "Contador de visualizaciones acumuladas de la propiedad." },
         "createdAt": { "type": "string", "format": "date-time", "description": "Sello temporal de publicación (FieldValue.serverTimestamp())." },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Sello temporal de última edición (FieldValue.serverTimestamp())." }
       },
@@ -58,6 +61,35 @@
         "areaTotalM2", "areaBuiltM2", "bedrooms", "bathrooms", "parkingSpaces",
         "amenities", "imageUrls", "featured", "status", "agentId", "agentName",
         "agentAgency", "agentWhatsapp", "verified", "createdAt", "updatedAt"
+      ]
+    },
+    "PropertyPromoVideo": {
+      "title": "PropertyPromoVideo",
+      "description": "Video promocional de una propiedad generado por un asesor con membresía Plan Senior.",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string", "description": "ID de la propiedad promocionada." },
+        "propertyTitle": { "type": "string", "description": "Título de la propiedad." },
+        "agentId": { "type": "string", "description": "UID del asesor propietario." },
+        "planTierAtCreation": { "type": "string", "enum": ["PLAN_SENIOR"], "description": "Membresía verificada al momento de generar el video." },
+        "generationMode": { "type": "string", "enum": ["AUTOMATED_SLIDESHOW", "AI_INTERACTIONS_API"], "description": "Modo de generación del video promocional." },
+        "aspectRatio": { "type": "string", "enum": ["9:16", "16:9"], "description": "Relación de aspecto del video." },
+        "selectedImages": { "type": "array", "description": "Imágenes seleccionadas de la propiedad (1 a 6)." },
+        "includeBackgroundMusic": { "type": "boolean", "description": "Indica si incluye pista musical ambiental." },
+        "overlayHeadline": { "type": "string", "description": "Titular promocional superpuesto." },
+        "priceLabel": { "type": "string", "description": "Etiqueta de precio formateado." },
+        "locationLabel": { "type": "string", "description": "Etiqueta de ciudad y barrio." },
+        "highlightsLabel": { "type": "string", "description": "Resumen de dormitorios, baños y m2." },
+        "localVideoPath": { "type": "string", "description": "Ruta del archivo MP4 generado." },
+        "durationSeconds": { "type": "integer", "description": "Duración del video en segundos." },
+        "status": { "type": "string", "enum": ["READY", "GENERATING"], "description": "Estado del video promocional." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Fecha de generación (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "propertyId", "propertyTitle", "agentId", "planTierAtCreation",
+        "generationMode", "aspectRatio", "selectedImages", "includeBackgroundMusic",
+        "overlayHeadline", "priceLabel", "locationLabel", "highlightsLabel",
+        "localVideoPath", "durationSeconds", "status", "createdAt"
       ]
     },
     "FavoriteItem": {
@@ -121,11 +153,15 @@
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
-      "description": "Perfiles privados de usuarios y configuración de cuenta / Yvy Capital Pro."
+      "description": "Perfiles privados de usuarios y configuración de membresía Yvy Capital Pro."
     },
     "/properties/{propertyId}": {
       "schema": { "$ref": "#/entities/Property" },
       "description": "Catálogo inmobiliario de propiedades en venta y alquiler en Paraguay."
+    },
+    "/property_videos/{videoId}": {
+      "schema": { "$ref": "#/entities/PropertyPromoVideo" },
+      "description": "Videos promocionales generados por asesores con Plan Senior."
     },
     "/users/{userId}/favorites/{propertyId}": {
       "schema": { "$ref": "#/entities/FavoriteItem" },

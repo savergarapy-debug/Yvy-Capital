@@ -17,6 +17,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:label="@string/app_name"
             android:theme="@style/Theme.MyApplication">
             <intent-filter>
@@ -24,7 +25,54 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Android App Links verificados (HTTPS) para abrir contenido directamente en Yvy Capital -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="https" />
+                <data android:host="yvycapital.com.py" />
+                <data android:host="www.yvycapital.com.py" />
+                <data android:pathPrefix="/propiedad" />
+                <data android:pathPrefix="/properties" />
+                <data android:pathPrefix="/asesor" />
+                <data android:pathPrefix="/explorar" />
+            </intent-filter>
+
+            <!-- Esquema nativo de respaldo (Deep Link directo) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="yvycapital"
+                    android:host="propiedad" />
+                <data
+                    android:scheme="yvycapital"
+                    android:host="properties" />
+                <data
+                    android:scheme="yvycapital"
+                    android:host="asesor" />
+                <data
+                    android:scheme="yvycapital"
+                    android:host="explorar" />
+            </intent-filter>
         </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

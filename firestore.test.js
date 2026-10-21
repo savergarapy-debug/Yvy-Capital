@@ -40,7 +40,7 @@ beforeEach(async () => {
   }
 });
 
-function validPropertyPayload(agentId) {
+function validPropertyPayload(agentId, featured = false) {
   return {
     title: "Penthouse en Villa Morra",
     description: "Amplio penthouse con vista panorámica y terraza con parrilla en el corazón de Asunción.",
@@ -61,15 +61,37 @@ function validPropertyPayload(agentId) {
     parkingSpaces: 2,
     amenities: ["Piscina", "Quincho con parrilla", "Seguridad 24h"],
     imageUrls: ["villa_morra_1"],
-    featured: true,
+    featured: featured,
     status: "active",
     agentId: agentId,
     agentName: "Carlos Benítez",
     agentAgency: "Yvy Capital Asunción",
     agentWhatsapp: "+595981234567",
     verified: true,
+    viewsCount: 0,
     createdAt: nowDate(),
     updatedAt: nowDate(),
+  };
+}
+
+function validVideoPayload(agentId) {
+  return {
+    propertyId: "prop_1",
+    propertyTitle: "Penthouse en Villa Morra",
+    agentId: agentId,
+    planTierAtCreation: "PLAN_SENIOR",
+    generationMode: "AUTOMATED_SLIDESHOW",
+    aspectRatio: "9:16",
+    selectedImages: ["villa_morra_1", "villa_morra_2"],
+    includeBackgroundMusic: true,
+    overlayHeadline: "Penthouse en Villa Morra",
+    priceLabel: "Gs. 1.850.000.000",
+    locationLabel: "Villa Morra, Asunción",
+    highlightsLabel: "245 m² • 3 Dormitorios • 4 Baños",
+    localVideoPath: "/data/user/0/com.aistudio.yvycapital.pykxmp/files/promo_prop_1.mp4",
+    durationSeconds: 6,
+    status: "READY",
+    createdAt: nowDate(),
   };
 }
 
@@ -97,21 +119,10 @@ test("2. User profile PII isolation: Alice cannot read Bob's profile", async () 
   await assertFails(aliceDb.collection("users").doc(BOB_UID).get());
 });
 
-test("3. User profile self-assigned paid planTier blocked on create and update", async () => {
+test("3. Advisor Membership Plans: enforces Plan Inicial max 5 listings & no featured listings in backend", async () => {
   const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
-  await assertFails(
-    aliceDb.collection("users").doc(ALICE_UID).set({
-      userId: ALICE_UID,
-      displayName: "Alicia Duarte",
-      email: "alicia@yvy.com.py",
-      preferredCurrency: "PYG",
-      role: "AGENT",
-      planTier: "PRO_ANNUAL",
-      createdAt: nowDate(),
-      updatedAt: nowDate(),
-    })
-  );
 
+  // Create Alice with PLAN_INICIAL and 4 active listings
   await assertSucceeds(
     aliceDb.collection("users").doc(ALICE_UID).set({
       userId: ALICE_UID,
@@ -119,29 +130,55 @@ test("3. User profile self-assigned paid planTier blocked on create and update",
       email: "alicia@yvy.com.py",
       preferredCurrency: "PYG",
       role: "AGENT",
-      planTier: "FREE",
+      planTier: "PLAN_INICIAL",
+      activeListingsCount: 4,
+      externalAgentMode: false,
       createdAt: nowDate(),
       updatedAt: nowDate(),
     })
   );
 
+  // Plan Inicial cannot enable externalAgentMode
   await assertFails(
     aliceDb.collection("users").doc(ALICE_UID).update({
-      planTier: "PRO_MONTHLY",
+      externalAgentMode: true,
       updatedAt: nowDate(),
     })
+  );
+
+  // Plan Inicial cannot publish a featured listing
+  await assertFails(
+    aliceDb.collection("properties").doc("prop_feat").set(validPropertyPayload(ALICE_UID, true))
+  );
+
+  // Plan Inicial can publish 5th non-featured listing when activeListingsCount == 4
+  await assertSucceeds(
+    aliceDb.collection("properties").doc("prop_5").set(validPropertyPayload(ALICE_UID, false))
+  );
+
+  // Update activeListingsCount to 5 (limit reached for PLAN_INICIAL)
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).update({
+      activeListingsCount: 5,
+      updatedAt: nowDate(),
+    })
+  );
+
+  // 6th listing must fail in backend for PLAN_INICIAL
+  await assertFails(
+    aliceDb.collection("properties").doc("prop_6").set(validPropertyPayload(ALICE_UID, false))
   );
 });
 
 test("4. Property creation: owner succeeds, spoofing agentId or ghost field fails", async () => {
   const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
   await assertSucceeds(
-    aliceDb.collection("properties").doc("prop_1").set(validPropertyPayload(ALICE_UID))
+    aliceDb.collection("properties").doc("prop_1").set(validPropertyPayload(ALICE_UID, false))
   );
 
   // Spoof Bob's UID
   await assertFails(
-    aliceDb.collection("properties").doc("prop_2").set(validPropertyPayload(BOB_UID))
+    aliceDb.collection("properties").doc("prop_2").set(validPropertyPayload(BOB_UID, false))
   );
 
   // Shadow update with ghost field
@@ -156,7 +193,7 @@ test("4. Property creation: owner succeeds, spoofing agentId or ghost field fail
 
 test("5. Property query alignment: active properties query succeeds, unfiltered query fails", async () => {
   await testEnv.withSecurityRulesDisabled(async (context) => {
-    await context.firestore().collection("properties").doc("prop_active").set(validPropertyPayload(BOB_UID));
+    await context.firestore().collection("properties").doc("prop_active").set(validPropertyPayload(BOB_UID, false));
   });
 
   const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
@@ -231,5 +268,50 @@ test("7. Inquiries: client can create, agent can update status, terminal CLOSED 
       status: "CONTACTED",
       updatedAt: nowDate(),
     })
+  );
+});
+
+test("8. Senior Video Generator Backend Enforcement: blocks PLAN_INICIAL and PLAN_INTERMEDIO, allows PLAN_SENIOR", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+
+  // Plan Inicial cannot create promo videos
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      displayName: "Alicia Duarte",
+      email: "alicia@yvy.com.py",
+      preferredCurrency: "PYG",
+      role: "AGENT",
+      planTier: "PLAN_INICIAL",
+      activeListingsCount: 1,
+      externalAgentMode: false,
+      createdAt: nowDate(),
+      updatedAt: nowDate(),
+    })
+  );
+  await assertFails(
+    aliceDb.collection("property_videos").doc("vid_1").set(validVideoPayload(ALICE_UID))
+  );
+
+  // Plan Intermedio cannot create promo videos
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).update({
+      planTier: "PLAN_INTERMEDIO",
+      updatedAt: nowDate(),
+    })
+  );
+  await assertFails(
+    aliceDb.collection("property_videos").doc("vid_1").set(validVideoPayload(ALICE_UID))
+  );
+
+  // Plan Senior succeeds creating promo videos
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).update({
+      planTier: "PLAN_SENIOR",
+      updatedAt: nowDate(),
+    })
+  );
+  await assertSucceeds(
+    aliceDb.collection("property_videos").doc("vid_1").set(validVideoPayload(ALICE_UID))
   );
 });

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
@@ -75,10 +76,13 @@ import com.example.data.model.Property
 import com.example.data.model.UserProfile
 import com.example.ui.components.MetricBadge
 import com.example.ui.components.PropertyArtworkHeader
+import com.example.ui.components.PublicWebFallbackPreviewDialog
+import com.example.ui.components.SharePropertyDirectLinkDialog
 import com.example.ui.theme.YvyForestDeep
 import com.example.ui.theme.YvyForestPrimary
 import com.example.ui.theme.YvyGoldAccent
 import com.example.ui.util.CurrencyFormatter
+import com.example.ui.util.DeepLinkHandler
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -99,7 +103,8 @@ fun PropertyDetailScreen(
         message: String,
         onSuccess: () -> Unit
     ) -> Unit,
-    onSubmitReport: (reason: String, details: String, onSuccess: () -> Unit) -> Unit
+    onSubmitReport: (reason: String, details: String, onSuccess: () -> Unit) -> Unit,
+    onMessage: (String) -> Unit = {}
 ) {
     BackHandler(onBack = onBack)
 
@@ -108,6 +113,8 @@ fun PropertyDetailScreen(
     var showInquiryDialog by remember { mutableStateOf(false) }
     var defaultInquiryType by remember { mutableStateOf("VISIT") }
     var showReportDialog by remember { mutableStateOf(false) }
+    var showShareDialog by remember { mutableStateOf(false) }
+    var showWebFallbackPreview by remember { mutableStateOf(false) }
 
     val galleryLabels = listOf(
         "Fachada Principal y Entorno",
@@ -155,19 +162,7 @@ fun PropertyDetailScreen(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         IconButton(
-                            onClick = {
-                                val shareText = buildString {
-                                    appendLine("🏡 ${property.title} — Yvy Capital Paraguay")
-                                    appendLine("📍 ${property.neighborhood}, ${property.city} (${property.department})")
-                                    appendLine("💰 ${CurrencyFormatter.formatPrice(property.price, property.currency)}")
-                                    appendLine("📐 ${property.areaTotalM2} m² totales | ${property.bedrooms} dorm. | ${property.bathrooms} baños")
-                                }
-                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, shareText)
-                                }
-                                context.startActivity(Intent.createChooser(sendIntent, "Compartir propiedad"))
-                            },
+                            onClick = { showShareDialog = true },
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(CircleShape)
@@ -294,7 +289,7 @@ fun PropertyDetailScreen(
                     color = MaterialTheme.colorScheme.onBackground
                 )
 
-                // Price Card
+                // Price Card (Single Currency Display aligned with active currency switch)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -326,19 +321,16 @@ fun PropertyDetailScreen(
                                 fontWeight = FontWeight.Bold
                             )
                         }
-                        Column(horizontalAlignment = Alignment.End) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
                             Text(
-                                text = "Equivalente referencial",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = CurrencyFormatter.formatSecondaryPrice(
-                                    amount = property.price,
-                                    sourceCurrency = property.currency
-                                ),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
+                                text = if (displayCurrency == "USD") "USD ($)" else "PYG (₲)",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             )
                         }
                     }
@@ -628,7 +620,8 @@ fun PropertyDetailScreen(
                             Button(
                                 onClick = {
                                     val cleanPhone = property.agentWhatsapp.replace(Regex("[^0-9]"), "")
-                                    val text = "Hola ${property.agentName}, vi la propiedad \"${property.title}\" en Yvy Capital y me gustaría recibir más información."
+                                    val directUrl = DeepLinkHandler.buildPropertyLink(property.id)
+                                    val text = "Hola ${property.agentName}, vi la propiedad \"${property.title}\" en Yvy Capital ($directUrl) y me gustaría recibir más información."
                                     val waUri = Uri.parse("https://wa.me/$cleanPhone?text=${Uri.encode(text)}")
                                     try {
                                         context.startActivity(Intent(Intent.ACTION_VIEW, waUri))
@@ -651,6 +644,22 @@ fun PropertyDetailScreen(
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Contactar por WhatsApp (${property.agentWhatsapp})")
                             }
+                        }
+
+                        // Botón de Enlace Directo Compartible de la Propiedad (App Link)
+                        OutlinedButton(
+                            onClick = { showShareDialog = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("share_direct_link_card_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Link,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Compartir Enlace Directo a esta Propiedad")
                         }
                     }
                 }
@@ -835,6 +844,34 @@ fun PropertyDetailScreen(
                     Text("Cancelar")
                 }
             }
+        )
+    }
+
+    if (showShareDialog) {
+        SharePropertyDirectLinkDialog(
+            property = property,
+            displayCurrency = displayCurrency,
+            onDismiss = { showShareDialog = false },
+            onLinkCopied = { msg -> onMessage(msg) },
+            onOpenWebFallbackPreview = {
+                showShareDialog = false
+                showWebFallbackPreview = true
+            }
+        )
+    }
+
+    if (showWebFallbackPreview) {
+        PublicWebFallbackPreviewDialog(
+            property = property,
+            displayCurrency = displayCurrency,
+            onOpenDirectlyInApp = {
+                showWebFallbackPreview = false
+                onMessage("Ya estás viendo la ficha directa de \"${property.title}\" en Yvy Capital.")
+            },
+            onCopyDeferredLink = { url ->
+                onMessage("Enlace diferido guardado en portapapeles: $url")
+            },
+            onDismiss = { showWebFallbackPreview = false }
         )
     }
 }

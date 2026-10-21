@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -53,12 +54,16 @@ import com.example.data.model.Property
 import com.example.data.repository.YvyRepository
 import com.example.ui.auth.AuthScreen
 import com.example.ui.auth.signOut
+import com.example.ui.components.DeepLinkCenterDialog
+import com.example.ui.components.DeepLinkNotFoundDialog
+import com.example.ui.components.PublicWebFallbackPreviewDialog
 import com.example.ui.screens.ExploreScreen
 import com.example.ui.screens.FavoritesScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.ProfileAndProScreen
 import com.example.ui.screens.PropertyDetailScreen
 import com.example.ui.theme.YvyCapitalTheme
+import com.example.ui.viewmodel.DeepLinkResolutionState
 import com.example.ui.viewmodel.UiState
 import com.example.ui.viewmodel.YvyViewModel
 import com.google.firebase.Firebase
@@ -68,16 +73,43 @@ import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 
 class MainActivity : ComponentActivity() {
+
+    private val incomingDeepLinkFlow = MutableStateFlow<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        extractDeepLinkFromIntent(intent)
         enableEdgeToEdge()
         setContent {
+            val pendingDeepLink by incomingDeepLinkFlow.collectAsStateWithLifecycle()
             YvyCapitalTheme {
-                AppNavigation()
+                AppNavigation(
+                    pendingDeepLinkUrl = pendingDeepLink,
+                    onConsumeDeepLink = { incomingDeepLinkFlow.value = null }
+                )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        extractDeepLinkFromIntent(intent)
+    }
+
+    private fun extractDeepLinkFromIntent(intent: Intent?) {
+        val dataUri = intent?.dataString
+        if (!dataUri.isNullOrBlank()) {
+            incomingDeepLinkFlow.value = dataUri
+            return
+        }
+        val deferredReferrer = intent?.getStringExtra("referrer")
+        if (!deferredReferrer.isNullOrBlank()) {
+            incomingDeepLinkFlow.value = deferredReferrer
         }
     }
 }
@@ -91,18 +123,26 @@ internal fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
 }
 
 @Composable
-fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
+fun AppNavigation(
+    auth: FirebaseAuth = Firebase.auth,
+    pendingDeepLinkUrl: String? = null,
+    onConsumeDeepLink: () -> Unit = {}
+) {
     val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
     val user = currentUser
 
     if (user == null) {
         AuthScreen(
             onAuthSuccess = {
-                // AuthStateListener updates currentUser automatically
+                // AuthStateListener updates currentUser automatically and preserves pendingDeepLinkUrl
             }
         )
     } else {
-        YvyMainWorkspace(currentUserId = user.uid)
+        YvyMainWorkspace(
+            currentUserId = user.uid,
+            pendingDeepLinkUrl = pendingDeepLinkUrl,
+            onConsumeDeepLink = onConsumeDeepLink
+        )
     }
 }
 
@@ -119,7 +159,11 @@ enum class YvyNavTab(
 }
 
 @Composable
-fun YvyMainWorkspace(currentUserId: String) {
+fun YvyMainWorkspace(
+    currentUserId: String,
+    pendingDeepLinkUrl: String? = null,
+    onConsumeDeepLink: () -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val credentialManager = remember { CredentialManager.create(context) }
@@ -145,18 +189,49 @@ fun YvyMainWorkspace(currentUserId: String) {
     val userInquiriesState by viewModel.userInquiriesState.collectAsStateWithLifecycle()
     val agentPropertiesState by viewModel.agentPropertiesState.collectAsStateWithLifecycle()
     val agentInquiriesState by viewModel.agentInquiriesState.collectAsStateWithLifecycle()
+    val agentPromoVideosState by viewModel.agentPromoVideosState.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val displayCurrency by viewModel.displayCurrency.collectAsStateWithLifecycle()
     val isGridView by viewModel.isGridView.collectAsStateWithLifecycle()
     val visibleCount by viewModel.visibleCount.collectAsStateWithLifecycle()
     val actionMessage by viewModel.actionMessage.collectAsStateWithLifecycle()
     val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
+    val deepLinkResolution by viewModel.deepLinkResolution.collectAsStateWithLifecycle()
 
     var currentTab by remember { mutableStateOf(YvyNavTab.HOME) }
     var profileInitialSubTab by remember { mutableIntStateOf(0) }
     var selectedProperty by remember { mutableStateOf<Property?>(null) }
+    var openExploreFilterOnEntry by remember { mutableStateOf(false) }
+    var showDeepLinkCenterDialog by remember { mutableStateOf(false) }
+    var webFallbackPreviewProperty by remember { mutableStateOf<Property?>(null) }
+    var showWebFallbackModal by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(pendingDeepLinkUrl) {
+        val url = pendingDeepLinkUrl
+        if (!url.isNullOrBlank()) {
+            viewModel.resolveDeepLink(url)
+            onConsumeDeepLink()
+        }
+    }
+
+    LaunchedEffect(deepLinkResolution) {
+        when (val res = deepLinkResolution) {
+            is DeepLinkResolutionState.ResolvedProperty -> {
+                selectedProperty = res.property
+                viewModel.showMessage("Propiedad abierta desde enlace directo: ${res.property.title}")
+                viewModel.clearDeepLinkResolution()
+            }
+            is DeepLinkResolutionState.ResolvedExplore -> {
+                selectedProperty = null
+                currentTab = YvyNavTab.EXPLORE
+                viewModel.showMessage(res.summaryMessage)
+                viewModel.clearDeepLinkResolution()
+            }
+            else -> Unit
+        }
+    }
 
     LaunchedEffect(actionMessage) {
         val msg = actionMessage
@@ -171,8 +246,16 @@ fun YvyMainWorkspace(currentUserId: String) {
         currentTab = YvyNavTab.HOME
     }
 
+    LaunchedEffect(selectedProperty?.id) {
+        val propId = selectedProperty?.id
+        if (!propId.isNullOrBlank()) {
+            viewModel.recordPropertyView(propId)
+        }
+    }
+
     val favoritesList = (favoritesState as? UiState.Success)?.data ?: emptyList()
     val userProfile = (userProfileState as? UiState.Success)?.data
+    val activeCatalogList = (propertiesState as? UiState.Success)?.data ?: emptyList()
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val isExpandedScreen = maxWidth >= 600.dp
@@ -260,7 +343,7 @@ fun YvyMainWorkspace(currentUserId: String) {
                                     onSuccess = onDone
                                 )
                             },
-                            onSubmitReport = { reason, details, onDone ->
+                                    onSubmitReport = { reason, details, onDone ->
                                 viewModel.submitReport(
                                     propertyId = activeProp.id,
                                     propertyTitle = activeProp.title,
@@ -268,7 +351,8 @@ fun YvyMainWorkspace(currentUserId: String) {
                                     details = details,
                                     onSuccess = onDone
                                 )
-                            }
+                            },
+                            onMessage = { msg -> viewModel.showMessage(msg) }
                         )
                     } else {
                         when (currentTab) {
@@ -289,6 +373,10 @@ fun YvyMainWorkspace(currentUserId: String) {
                                     onNavigateToExplore = {
                                         currentTab = YvyNavTab.EXPLORE
                                     },
+                                    onOpenExploreFilter = {
+                                        openExploreFilterOnEntry = true
+                                        currentTab = YvyNavTab.EXPLORE
+                                    },
                                     onNavigateToFavorites = {
                                         currentTab = YvyNavTab.FAVORITES
                                     },
@@ -298,18 +386,22 @@ fun YvyMainWorkspace(currentUserId: String) {
                                     },
                                     onPropertyClick = { selectedProperty = it },
                                     onToggleFavorite = { viewModel.toggleFavorite(it) },
-                                    onReloadDemo = { viewModel.reloadDemoCatalog() }
+                                    onReloadDemo = { viewModel.reloadDemoCatalog() },
+                                    onOpenDeepLinkCenter = { showDeepLinkCenterDialog = true }
                                 )
                             }
 
                             YvyNavTab.EXPLORE -> {
                                 ExploreScreen(
                                     filteredProperties = filteredProperties,
+                                    allCatalogProperties = activeCatalogList,
                                     favorites = favoritesList,
                                     filter = filter,
                                     displayCurrency = displayCurrency,
                                     isGridView = isGridView,
                                     visibleCount = visibleCount,
+                                    autoOpenFilter1 = openExploreFilterOnEntry,
+                                    onConsumeAutoOpenFilter1 = { openExploreFilterOnEntry = false },
                                     onUpdateFilter = { viewModel.updateFilter(it) },
                                     onResetFilters = { viewModel.resetFilters() },
                                     onToggleViewMode = { viewModel.toggleViewMode() },
@@ -336,21 +428,44 @@ fun YvyMainWorkspace(currentUserId: String) {
                                     userProfileState = userProfileState,
                                     agentPropertiesState = agentPropertiesState,
                                     agentInquiriesState = agentInquiriesState,
+                                    agentPromoVideosState = agentPromoVideosState,
+                                    catalogProperties = activeCatalogList,
+                                    displayCurrency = displayCurrency,
                                     isBusy = isBusy,
                                     initialTab = profileInitialSubTab,
                                     onSaveProfile = { name, phone, currency, role, agency ->
                                         viewModel.saveUserProfile(name, phone, currency, role, agency)
                                     },
-                                    onPublishProperty = { title, desc, op, type, price, curr, dept, city, neigh, addr, areaT, areaB, beds, baths, park, amen, agName, agAgency, agWa, onDone ->
+                                    onActivateAdvisorPlan = { planTier, name, phone, agency, extMode ->
+                                        viewModel.activateAdvisorPlan(planTier, name, phone, agency, extMode)
+                                    },
+                                    onToggleExternalAgentMode = { enabled ->
+                                        viewModel.toggleExternalAgentMode(enabled)
+                                    },
+                                    onPublishProperty = { title, desc, op, type, price, curr, dept, city, neigh, addr, areaT, areaB, beds, baths, park, amen, featured, agName, agAgency, agWa, onDone ->
                                         viewModel.publishNewProperty(
                                             title, desc, op, type, price, curr, dept, city, neigh, addr,
-                                            areaT, areaB, beds, baths, park, amen, agName, agAgency, agWa, onDone
+                                            areaT, areaB, beds, baths, park, amen, featured, agName, agAgency, agWa, onDone
                                         )
                                     },
+                                    onGeneratePromoVideo = { prop, ratio, scenes, music, headline, preferAi, onDone ->
+                                        viewModel.generateAndSavePromoVideo(
+                                            context = context,
+                                            property = prop,
+                                            aspectRatio = ratio,
+                                            selectedImages = scenes,
+                                            includeBackgroundMusic = music,
+                                            customHeadline = headline,
+                                            preferAiInteractions = preferAi,
+                                            onSuccess = onDone
+                                        )
+                                    },
+                                    onDeletePromoVideo = { viewModel.deletePromoVideo(it) },
                                     onDeleteProperty = { viewModel.deleteAgentProperty(it) },
                                     onUpdateInquiryStatus = { id, status ->
                                         viewModel.updateInquiryStatus(id, status)
                                     },
+                                    onMessage = { msg -> viewModel.showMessage(msg) },
                                     onSignOut = {
                                         signOut(
                                             context = context,
@@ -375,6 +490,66 @@ fun YvyMainWorkspace(currentUserId: String) {
                     }
                 }
             }
+        }
+
+        // Caso C: Modal de Propiedad Eliminada, Despublicada o Enlace No Disponible
+        val notFoundState = deepLinkResolution as? DeepLinkResolutionState.NotFoundOrUnavailable
+        if (notFoundState != null) {
+            DeepLinkNotFoundDialog(
+                rawUrl = notFoundState.rawUrl,
+                title = notFoundState.title,
+                message = notFoundState.message,
+                onGoHome = {
+                    selectedProperty = null
+                    currentTab = YvyNavTab.HOME
+                    viewModel.clearDeepLinkResolution()
+                },
+                onExploreProperties = {
+                    selectedProperty = null
+                    viewModel.resetFilters()
+                    currentTab = YvyNavTab.EXPLORE
+                    viewModel.clearDeepLinkResolution()
+                },
+                onDismiss = {
+                    viewModel.clearDeepLinkResolution()
+                }
+            )
+        }
+
+        // Centro de Enlaces Directos (Pegar URL o Verificar Casos A, B y C)
+        if (showDeepLinkCenterDialog) {
+            DeepLinkCenterDialog(
+                activeProperties = activeCatalogList,
+                displayCurrency = displayCurrency,
+                onResolveLink = { url ->
+                    showDeepLinkCenterDialog = false
+                    viewModel.resolveDeepLink(url)
+                },
+                onPreviewWebFallback = { prop ->
+                    showDeepLinkCenterDialog = false
+                    webFallbackPreviewProperty = prop
+                    showWebFallbackModal = true
+                },
+                onDismiss = { showDeepLinkCenterDialog = false }
+            )
+        }
+
+        // Caso B: Vista Previa de Página Pública de Destino (cuando el destinatario no tiene la app)
+        val previewProp = webFallbackPreviewProperty
+        if (showWebFallbackModal && previewProp != null) {
+            PublicWebFallbackPreviewDialog(
+                property = previewProp,
+                displayCurrency = displayCurrency,
+                onOpenDirectlyInApp = {
+                    showWebFallbackModal = false
+                    selectedProperty = previewProp
+                    viewModel.showMessage("Abriendo propiedad directamente en Yvy Capital")
+                },
+                onCopyDeferredLink = { url ->
+                    viewModel.showMessage("Enlace diferido copiado al portapapeles: $url")
+                },
+                onDismiss = { showWebFallbackModal = false }
+            )
         }
     }
 }

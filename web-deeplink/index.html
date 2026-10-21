@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Yvy Capital — Abrir contenido en la aplicación Android</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0F261A;
+      color: #F4EFE6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .card {
+      background: #1B3B2B;
+      border: 1px solid #C89D54;
+      border-radius: 20px;
+      max-width: 440px;
+      width: 100%;
+      padding: 28px;
+      box-sizing: border-box;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(200, 157, 84, 0.2);
+      color: #C89D54;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      color: #FFFFFF;
+    }
+    p {
+      margin: 0 0 18px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #D7E2DC;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      text-align: center;
+      padding: 14px;
+      border-radius: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+    }
+    .btn-primary {
+      background: #C89D54;
+      color: #0F261A;
+    }
+    .btn-secondary {
+      border: 1px solid #C89D54;
+      color: #C89D54;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">YVY CAPITAL PARAGUAY</span>
+    <h1 id="title">Propiedad compartida en Yvy Capital</h1>
+    <p id="desc">Abre este enlace directamente en la aplicación oficial de Yvy Capital para Android o descárgala desde Google Play.</p>
+    <a id="openAppBtn" class="btn btn-primary" href="yvycapital://explorar">Abrir en Yvy Capital</a>
+    <a id="playStoreBtn" class="btn btn-secondary" href="https://play.google.com/store/apps/details?id=com.aistudio.yvycapital.pykxmp">Descargar en Google Play</a>
+  </div>
+  <script>
+    (function() {
+      var path = window.location.pathname || "/explorar";
+      var search = window.location.search || "";
+      var cleanPath = path.replace(/^\/+/, "");
+      var nativeUri = "yvycapital://" + (cleanPath || "explorar") + search;
+      var intentUri = "intent://" + (cleanPath || "explorar") + search +
+        "#Intent;scheme=yvycapital;package=com.aistudio.yvycapital.pykxmp;" +
+        "S.browser_fallback_url=" + encodeURIComponent("https://play.google.com/store/apps/details?id=com.aistudio.yvycapital.pykxmp&referrer=" + encodeURIComponent(nativeUri)) +
+        ";end";
+      document.getElementById("openAppBtn").setAttribute("href", intentUri);
+    })();
+  </script>
+</body>
+</html>

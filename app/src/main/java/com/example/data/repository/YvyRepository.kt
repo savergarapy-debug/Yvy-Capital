@@ -2,9 +2,11 @@ package com.example.data.repository
 
 import android.content.Context
 import com.example.R
+import com.example.data.model.AdvisorMemberships
 import com.example.data.model.FavoriteItem
 import com.example.data.model.Property
 import com.example.data.model.PropertyInquiry
+import com.example.data.model.PropertyPromoVideo
 import com.example.data.model.PropertyReport
 import com.example.data.model.UserProfile
 import com.google.firebase.Firebase
@@ -50,6 +52,16 @@ class YvyRepository(private val db: FirebaseFirestore) {
             }
     }
 
+    fun observePropiedadesActivas(): Flow<List<com.example.data.model.Propiedad>> {
+        return observeActiveProperties().map { list ->
+            list.map { com.example.data.model.Propiedad.fromProperty(it) }
+        }
+    }
+
+    suspend fun guardarPropiedad(propiedad: com.example.data.model.Propiedad): Result<String> {
+        return createProperty(propiedad.toProperty())
+    }
+
     fun observeAgentProperties(agentId: String): Flow<List<Property>> {
         val path = "properties"
         return db.collection(path)
@@ -86,6 +98,29 @@ class YvyRepository(private val db: FirebaseFirestore) {
             } else {
                 db.collection(path).document()
             }
+
+            val isDemoSeed = docRef.id.startsWith("demo-") || docRef.id.startsWith("py_")
+            val userDocRef = db.collection("users").document(uid)
+            val userSnap = userDocRef.get().await()
+            val profile = if (userSnap.exists()) {
+                userSnap.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+            } else {
+                null
+            }
+
+            if (!isDemoSeed && profile != null) {
+                val maxAllowed = AdvisorMemberships.maxListingsForTier(profile.planTier)
+                if (maxAllowed <= 0) {
+                    throw IllegalStateException("Debes activar un plan de membresía de Asesor (Inicial, Intermedio o Senior) para publicar propiedades.")
+                }
+                if (profile.activeListingsCount >= maxAllowed) {
+                    throw IllegalStateException("Alcanzaste el límite de $maxAllowed publicaciones activas de tu ${AdvisorMemberships.displayNameForTier(profile.planTier)}.")
+                }
+                if (property.featured && !AdvisorMemberships.canFeatureForTier(profile.planTier)) {
+                    throw IllegalStateException("Las publicaciones destacadas requieren el Plan Intermedio o Plan Senior.")
+                }
+            }
+
             val payload = mapOf(
                 "title" to property.title,
                 "description" to property.description,
@@ -113,15 +148,51 @@ class YvyRepository(private val db: FirebaseFirestore) {
                 "agentAgency" to property.agentAgency,
                 "agentWhatsapp" to property.agentWhatsapp,
                 "verified" to property.verified,
+                "viewsCount" to property.viewsCount.coerceAtLeast(0L),
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
             docRef.set(payload).await()
+
+            if (!isDemoSeed && profile != null) {
+                val newCount = (profile.activeListingsCount + 1L).coerceAtMost(10L)
+                userDocRef.update(
+                    mapOf(
+                        "activeListingsCount" to newCount,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            }
+
             docRef.id
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.CREATE, path)
+            throw e
+        }
+    }
+
+    suspend fun incrementPropertyViews(propertyId: String): Result<Long> = runCatching {
+        requireUserId()
+        val path = "properties/$propertyId"
+        try {
+            val docRef = db.collection("properties").document(propertyId)
+            val snap = docRef.get().await()
+            if (!snap.exists()) return@runCatching 0L
+            val currentViews = snap.getLong("viewsCount") ?: 0L
+            val nextViews = currentViews + 1L
+            docRef.update(
+                mapOf(
+                    "viewsCount" to nextViews,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            nextViews
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
             throw e
         }
     }
@@ -145,10 +216,25 @@ class YvyRepository(private val db: FirebaseFirestore) {
     }
 
     suspend fun deleteProperty(propertyId: String): Result<Unit> = runCatching {
-        requireUserId()
+        val uid = requireUserId()
         val path = "properties/$propertyId"
         try {
             db.collection("properties").document(propertyId).delete().await()
+            val isDemoSeed = propertyId.startsWith("demo-") || propertyId.startsWith("py_")
+            if (!isDemoSeed) {
+                val userDocRef = db.collection("users").document(uid)
+                val snap = userDocRef.get().await()
+                if (snap.exists()) {
+                    val currentCount = snap.getLong("activeListingsCount") ?: 0L
+                    val nextCount = (currentCount - 1L).coerceAtLeast(0L)
+                    userDocRef.update(
+                        mapOf(
+                            "activeListingsCount" to nextCount,
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    ).await()
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -225,11 +311,166 @@ class YvyRepository(private val db: FirebaseFirestore) {
         }
     }
 
+    suspend fun activateAdvisorMembership(
+        planTier: String,
+        displayName: String,
+        email: String,
+        phone: String,
+        agencyName: String,
+        externalAgentMode: Boolean
+    ): Result<UserProfile> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid"
+        val spec = AdvisorMemberships.getSpec(planTier)
+            ?: throw IllegalArgumentException("Plan de membresía no válido: $planTier")
+        val cleanExternalMode = externalAgentMode && spec.supportsExternalAgentMode
+
+        try {
+            val docRef = db.collection("users").document(uid)
+            val existing = docRef.get().await()
+            if (!existing.exists()) {
+                val createPayload = mutableMapOf<String, Any>(
+                    "userId" to uid,
+                    "displayName" to displayName.ifBlank { "Asesor Yvy Capital" },
+                    "email" to email.ifBlank { "asesor@yvycapital.com.py" },
+                    "preferredCurrency" to "PYG",
+                    "role" to "AGENT",
+                    "planTier" to spec.code,
+                    "activeListingsCount" to 0L,
+                    "externalAgentMode" to cleanExternalMode,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+                if (phone.isNotBlank()) createPayload["phone"] = phone
+                if (agencyName.isNotBlank()) createPayload["agencyName"] = agencyName
+                docRef.set(createPayload).await()
+            } else {
+                val currentCount = (existing.getLong("activeListingsCount") ?: 0L).coerceIn(0L, 10L)
+                val updatePayload = mutableMapOf<String, Any>(
+                    "displayName" to displayName.ifBlank { "Asesor Yvy Capital" },
+                    "role" to "AGENT",
+                    "planTier" to spec.code,
+                    "activeListingsCount" to currentCount,
+                    "externalAgentMode" to cleanExternalMode,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+                if (phone.isNotBlank()) updatePayload["phone"] = phone
+                if (agencyName.isNotBlank()) updatePayload["agencyName"] = agencyName
+                docRef.update(updatePayload).await()
+            }
+            val updatedDoc = docRef.get().await()
+            updatedDoc.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+                ?: UserProfile(id = uid, userId = uid, displayName = displayName, email = email, role = "AGENT", planTier = spec.code)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.WRITE, path)
+            throw e
+        }
+    }
+
+    suspend fun updateExternalAgentMode(enabled: Boolean): Result<Unit> = runCatching {
+        val uid = requireUserId()
+        val path = "users/$uid"
+        try {
+            val docRef = db.collection("users").document(uid)
+            val snap = docRef.get().await()
+            val tier = snap.getString("planTier") ?: AdvisorMemberships.TIER_FREE
+            val spec = AdvisorMemberships.getSpec(tier)
+            if (enabled && (spec == null || !spec.supportsExternalAgentMode)) {
+                throw IllegalStateException("La modalidad de agente inmobiliario externo solo está disponible en el Plan Intermedio y Plan Senior.")
+            }
+            docRef.update(
+                mapOf(
+                    "externalAgentMode" to enabled,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            throw e
+        }
+    }
+
     suspend fun deleteUserProfile(): Result<Unit> = runCatching {
         val uid = requireUserId()
         val path = "users/$uid"
         try {
             db.collection("users").document(uid).delete().await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, path)
+            throw e
+        }
+    }
+
+    // --- 2B. VIDEOS PROMOCIONALES (EXCLUSIVO PLAN SENIOR) ---
+
+    fun observeAgentPromoVideos(agentId: String): Flow<List<PropertyPromoVideo>> {
+        val path = "property_videos"
+        return db.collection(path)
+            .whereEqualTo("agentId", agentId)
+            .snapshots()
+            .map { snapshot ->
+                snapshot.toObjects(PropertyPromoVideo::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+            }
+            .catch { error ->
+                if (error is Exception) handleFirestoreError(error, OperationType.LIST, path)
+                throw error
+            }
+    }
+
+    suspend fun createPromoVideo(video: PropertyPromoVideo): Result<String> = runCatching {
+        val uid = requireUserId()
+        val path = "property_videos"
+        try {
+            val userSnap = db.collection("users").document(uid).get().await()
+            val currentTier = userSnap.getString("planTier") ?: AdvisorMemberships.TIER_FREE
+            if (!AdvisorMemberships.isSeniorTier(currentTier)) {
+                throw IllegalStateException("El Generador de Videos Promocionales es exclusivo para asesores con Membresía Plan Senior.")
+            }
+
+            val docRef = if (video.id.isNotBlank()) {
+                db.collection(path).document(video.id)
+            } else {
+                db.collection(path).document()
+            }
+            val payload = mapOf(
+                "propertyId" to video.propertyId,
+                "propertyTitle" to video.propertyTitle,
+                "agentId" to uid,
+                "planTierAtCreation" to AdvisorMemberships.TIER_SENIOR,
+                "generationMode" to video.generationMode,
+                "aspectRatio" to video.aspectRatio,
+                "selectedImages" to video.selectedImages.take(6),
+                "includeBackgroundMusic" to video.includeBackgroundMusic,
+                "overlayHeadline" to video.overlayHeadline.take(160),
+                "priceLabel" to video.priceLabel.take(80),
+                "locationLabel" to video.locationLabel.take(120),
+                "highlightsLabel" to video.highlightsLabel.take(200),
+                "localVideoPath" to video.localVideoPath.take(500),
+                "durationSeconds" to video.durationSeconds.coerceIn(3L, 30L),
+                "status" to "READY",
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+            docRef.set(payload).await()
+            docRef.id
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, path)
+            throw e
+        }
+    }
+
+    suspend fun deletePromoVideo(videoId: String): Result<Unit> = runCatching {
+        requireUserId()
+        val path = "property_videos/$videoId"
+        try {
+            db.collection("property_videos").document(videoId).delete().await()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

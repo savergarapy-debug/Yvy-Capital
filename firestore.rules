@@ -31,6 +31,33 @@ service cloud.firestore {
       );
     }
 
+    function userProfileExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Valida en el backend el plan y límite de publicaciones activas del asesor
+    function canAdvisorPublishProperty(propertyId, data) {
+      return propertyId.matches('^(demo-|py_).*') ||
+             !userProfileExists() || (
+               (getUserProfile().planTier == 'PLAN_INICIAL' &&
+                getUserProfile().get('activeListingsCount', 0) < 5 &&
+                data.featured == false) ||
+               ((getUserProfile().planTier == 'PLAN_INTERMEDIO' || getUserProfile().planTier == 'PLAN_SENIOR') &&
+                getUserProfile().get('activeListingsCount', 0) < 10)
+             );
+    }
+
+    // Valida en el backend que el usuario tenga Membresía Senior activa
+    function hasSeniorMembership() {
+      return isSignedIn() &&
+             userProfileExists() &&
+             getUserProfile().planTier == 'PLAN_SENIOR';
+    }
+
     // 3. Entity Validation Blueprints
     function isValidUserProfile(data) {
       return data.userId is string && data.userId == request.auth.uid && data.userId.size() <= 128 &&
@@ -40,7 +67,19 @@ service cloud.firestore {
              data.preferredCurrency is string && (data.preferredCurrency == 'PYG' || data.preferredCurrency == 'USD') &&
              data.role is string && (data.role == 'CLIENT' || data.role == 'AGENT') &&
              (!('agencyName' in data) || (data.agencyName is string && data.agencyName.size() <= 120)) &&
-             data.planTier is string && (data.planTier == 'FREE' || data.planTier == 'PRO_MONTHLY' || data.planTier == 'PRO_ANNUAL') &&
+             data.planTier is string && (
+               data.planTier == 'FREE' ||
+               data.planTier == 'PLAN_INICIAL' ||
+               data.planTier == 'PLAN_INTERMEDIO' ||
+               data.planTier == 'PLAN_SENIOR' ||
+               data.planTier == 'PRO_MONTHLY' ||
+               data.planTier == 'PRO_ANNUAL'
+             ) &&
+             (!('activeListingsCount' in data) || (data.activeListingsCount is int && data.activeListingsCount >= 0 && data.activeListingsCount <= 10)) &&
+             (!('externalAgentMode' in data) || (
+               data.externalAgentMode is bool &&
+               (!data.externalAgentMode || data.planTier == 'PLAN_INTERMEDIO' || data.planTier == 'PLAN_SENIOR')
+             )) &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
              data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
@@ -79,8 +118,28 @@ service cloud.firestore {
              data.agentAgency is string && data.agentAgency.size() >= 1 && data.agentAgency.size() <= 120 &&
              data.agentWhatsapp is string && data.agentWhatsapp.size() >= 6 && data.agentWhatsapp.size() <= 30 &&
              data.verified is bool &&
+             (!('viewsCount' in data) || (data.viewsCount is int && data.viewsCount >= 0)) &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
              data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidPromoVideo(data) {
+      return data.propertyId is string && isValidId(data.propertyId) &&
+             data.propertyTitle is string && data.propertyTitle.size() >= 2 && data.propertyTitle.size() <= 140 &&
+             data.agentId is string && data.agentId == request.auth.uid && data.agentId.size() <= 128 &&
+             data.planTierAtCreation is string && data.planTierAtCreation == 'PLAN_SENIOR' &&
+             data.generationMode is string && (data.generationMode == 'AI_INTERACTIONS_API' || data.generationMode == 'AUTOMATED_SLIDESHOW') &&
+             data.aspectRatio is string && (data.aspectRatio == '9:16' || data.aspectRatio == '16:9') &&
+             data.selectedImages is list && data.selectedImages.size() >= 1 && data.selectedImages.size() <= 6 &&
+             data.includeBackgroundMusic is bool &&
+             data.overlayHeadline is string && data.overlayHeadline.size() <= 160 &&
+             data.priceLabel is string && data.priceLabel.size() <= 80 &&
+             data.locationLabel is string && data.locationLabel.size() <= 120 &&
+             data.highlightsLabel is string && data.highlightsLabel.size() <= 200 &&
+             data.localVideoPath is string && data.localVideoPath.size() <= 500 &&
+             data.durationSeconds is int && data.durationSeconds >= 3 && data.durationSeconds <= 30 &&
+             data.status is string && (data.status == 'READY' || data.status == 'GENERATING') &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
     }
 
     function isValidFavoriteItem(data) {
@@ -133,7 +192,7 @@ service cloud.firestore {
 
     // 4. Collection Rules
 
-    // A. Perfiles de Usuarios (/users/{userId}) - Estricto aislamiento PII
+    // A. Perfiles de Usuarios (/users/{userId}) - Estricto aislamiento PII y validación de membresías
     match /users/{userId} {
       allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
       allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
@@ -141,9 +200,9 @@ service cloud.firestore {
       allow create: if isSignedIn() &&
                        isValidId(userId) &&
                        request.auth.uid == userId &&
-                       incoming().planTier == 'FREE' &&
+                       (incoming().planTier == 'FREE' || incoming().planTier == 'PLAN_INICIAL' || incoming().planTier == 'PLAN_INTERMEDIO' || incoming().planTier == 'PLAN_SENIOR') &&
                        incoming().keys().hasAll(['userId', 'displayName', 'email', 'preferredCurrency', 'role', 'planTier', 'createdAt', 'updatedAt']) &&
-                       incoming().keys().hasOnly(['userId', 'displayName', 'email', 'phone', 'preferredCurrency', 'role', 'agencyName', 'planTier', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'email', 'phone', 'preferredCurrency', 'role', 'agencyName', 'planTier', 'activeListingsCount', 'externalAgentMode', 'createdAt', 'updatedAt']) &&
                        isValidUserProfile(incoming());
 
       allow update: if isSignedIn() &&
@@ -152,9 +211,11 @@ service cloud.firestore {
                          isAdmin() || (
                            request.auth.uid == userId &&
                            incoming().userId == existing().userId &&
-                           incoming().planTier == existing().planTier &&
                            incoming().createdAt == existing().createdAt &&
-                           incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phone', 'preferredCurrency', 'role', 'agencyName', 'updatedAt'])
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'displayName', 'phone', 'preferredCurrency', 'role',
+                             'agencyName', 'planTier', 'activeListingsCount', 'externalAgentMode', 'updatedAt'
+                           ])
                          )
                        );
 
@@ -205,6 +266,7 @@ service cloud.firestore {
       allow create: if isSignedIn() &&
                        isValidId(propertyId) &&
                        incoming().agentId == request.auth.uid &&
+                       canAdvisorPublishProperty(propertyId, incoming()) &&
                        incoming().keys().hasAll([
                          'title', 'description', 'operationType', 'propertyType', 'price', 'currency',
                          'department', 'city', 'neighborhood', 'address', 'latitude', 'longitude',
@@ -217,7 +279,7 @@ service cloud.firestore {
                          'department', 'city', 'neighborhood', 'address', 'latitude', 'longitude',
                          'areaTotalM2', 'areaBuiltM2', 'bedrooms', 'bathrooms', 'parkingSpaces',
                          'amenities', 'imageUrls', 'featured', 'status', 'agentId', 'agentName',
-                         'agentAgency', 'agentWhatsapp', 'verified', 'createdAt', 'updatedAt'
+                         'agentAgency', 'agentWhatsapp', 'verified', 'viewsCount', 'createdAt', 'updatedAt'
                        ]) &&
                        isValidProperty(incoming());
 
@@ -233,15 +295,56 @@ service cloud.firestore {
                              'department', 'city', 'neighborhood', 'address', 'latitude', 'longitude',
                              'areaTotalM2', 'areaBuiltM2', 'bedrooms', 'bathrooms', 'parkingSpaces',
                              'amenities', 'imageUrls', 'featured', 'status', 'agentName',
-                             'agentAgency', 'agentWhatsapp', 'updatedAt'
+                             'agentAgency', 'agentWhatsapp', 'viewsCount', 'updatedAt'
                            ])
+                         ) || (
+                           // Seguimiento de visualizaciones: cualquier usuario autenticado puede incrementar viewsCount en +1
+                           existing().status == 'active' &&
+                           incoming().agentId == existing().agentId &&
+                           incoming().createdAt == existing().createdAt &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['viewsCount', 'updatedAt']) &&
+                           incoming().viewsCount == existing().get('viewsCount', 0) + 1
                          )
                        );
 
       allow delete: if isSignedIn() && isValidId(propertyId) && (existing().agentId == request.auth.uid || isAdmin());
     }
 
-    // D. Consultas y Solicitudes de Visita (/inquiries/{inquiryId})
+    // D. Videos Promocionales de Propiedades (/property_videos/{videoId}) - EXCLUSIVO PLAN SENIOR
+    match /property_videos/{videoId} {
+      allow get: if isSignedIn() && isValidId(videoId) && (
+        resource.data.agentId == request.auth.uid ||
+        resource.data.status == 'READY' ||
+        isAdmin()
+      );
+
+      allow list: if isSignedIn() && (
+        resource.data.agentId == request.auth.uid ||
+        resource.data.status == 'READY' ||
+        isAdmin()
+      );
+
+      allow create: if hasSeniorMembership() &&
+                       isValidId(videoId) &&
+                       incoming().agentId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'propertyId', 'propertyTitle', 'agentId', 'planTierAtCreation',
+                         'generationMode', 'aspectRatio', 'selectedImages', 'includeBackgroundMusic',
+                         'overlayHeadline', 'priceLabel', 'locationLabel', 'highlightsLabel',
+                         'localVideoPath', 'durationSeconds', 'status', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'propertyId', 'propertyTitle', 'agentId', 'planTierAtCreation',
+                         'generationMode', 'aspectRatio', 'selectedImages', 'includeBackgroundMusic',
+                         'overlayHeadline', 'priceLabel', 'locationLabel', 'highlightsLabel',
+                         'localVideoPath', 'durationSeconds', 'status', 'createdAt'
+                       ]) &&
+                       isValidPromoVideo(incoming());
+
+      allow delete: if isSignedIn() && isValidId(videoId) && (existing().agentId == request.auth.uid || isAdmin());
+    }
+
+    // E. Consultas y Solicitudes de Visita (/inquiries/{inquiryId})
     match /inquiries/{inquiryId} {
       allow get: if isSignedIn() && isValidId(inquiryId) && (
         resource.data.userId == request.auth.uid ||
@@ -288,7 +391,7 @@ service cloud.firestore {
       allow delete: if isSignedIn() && isValidId(inquiryId) && (existing().userId == request.auth.uid || isAdmin());
     }
 
-    // E. Denuncias y Moderación de Anuncios (/reports/{reportId})
+    // F. Denuncias y Moderación de Anuncios (/reports/{reportId})
     match /reports/{reportId} {
       allow get: if isSignedIn() && isValidId(reportId) && (resource.data.reporterId == request.auth.uid || isAdmin());
       allow list: if isSignedIn() && (resource.data.reporterId == request.auth.uid || isAdmin());
