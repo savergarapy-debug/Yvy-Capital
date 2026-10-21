@@ -5,41 +5,37 @@ import java.util.Locale
 import kotlin.math.roundToLong
 
 object CurrencyFormatter {
-    // Tipo de cambio referencial PYG / USD en Paraguay (~7.800 Gs por 1 USD)
+    // Tipo de cambio referencial conservado únicamente por compatibilidad con utilidades existentes
     const val EXCHANGE_RATE_PYG_PER_USD = 7800.0
 
     /**
-     * Formatea el precio exclusivamente en la moneda seleccionada (PYG -> ₲, USD -> $).
-     * Maneja de forma segura montos inválidos, negativos o cero sin producir errores visuales.
+     * Formatea el precio exclusivamente en la moneda original elegida por el autor de la publicación:
+     * - PYG -> Guaraní paraguayo (₲)
+     * - USD -> Dólar estadounidense ($)
+     * No realiza conversiones automáticas entre monedas ni muestra dos monedas simultáneamente.
      */
     fun formatPrice(
         amount: Double,
         sourceCurrency: String,
-        displayCurrency: String = sourceCurrency
+        @Suppress("UNUSED_PARAMETER") displayCurrency: String = sourceCurrency
     ): String {
         if (amount.isNaN() || amount.isInfinite() || amount <= 0.0) {
             return "Consultar precio"
         }
-        val cleanSource = sourceCurrency.uppercase().ifBlank { "PYG" }
-        val cleanDisplay = displayCurrency.uppercase().ifBlank { "PYG" }
-        val convertedAmount = convert(amount, cleanSource, cleanDisplay)
-        if (convertedAmount.isNaN() || convertedAmount.isInfinite() || convertedAmount <= 0.0) {
-            return "Consultar precio"
-        }
+        val authorCurrency = sourceCurrency.uppercase().trim().ifBlank { "PYG" }
 
-        val nf = NumberFormat.getNumberInstance(Locale("es", "PY")).apply {
+        val nf = NumberFormat.getNumberInstance(Locale.forLanguageTag("es-PY")).apply {
             maximumFractionDigits = 0
         }
-        return if (cleanDisplay == "USD") {
-            "$ ${nf.format(convertedAmount.roundToLong())}"
+        return if (authorCurrency == "USD") {
+            "$ ${nf.format(amount.roundToLong())}"
         } else {
-            "₲ ${nf.format(convertedAmount.roundToLong())}"
+            "₲ ${nf.format(amount.roundToLong())}"
         }
     }
 
     fun formatSecondaryPrice(amount: Double, sourceCurrency: String): String {
-        val targetCurrency = if (sourceCurrency.uppercase() == "PYG") "USD" else "PYG"
-        return "≈ ${formatPrice(amount, sourceCurrency, targetCurrency)}"
+        return formatPrice(amount, sourceCurrency, sourceCurrency)
     }
 
     fun convert(amount: Double, fromCurrency: String, toCurrency: String): Double {
@@ -67,7 +63,7 @@ object CurrencyFormatter {
         return when (propertyType.uppercase()) {
             "HOUSE" -> "Casa"
             "APARTMENT" -> "Departamento"
-            "LAND" -> "Terreno"
+            "LAND" -> "Terreno / Lote"
             "OFFICE" -> "Oficina"
             "COMMERCIAL" -> "Local Comercial"
             "ESTANCIA" -> "Estancia / Quinta"
@@ -302,5 +298,9 @@ object ParaguayLocations {
         val combined = (baseList + dynamicCities.filter { it.isNotBlank() })
             .distinctBy { it.lowercase().trim() }
         return listOf("Todas") + combined
+    }
+
+    fun citiesForPublishDepartment(department: String): List<String> {
+        return citiesMap[department]?.ifEmpty { listOf(department) } ?: listOf("Asunción")
     }
 }

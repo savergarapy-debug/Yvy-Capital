@@ -38,15 +38,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -83,7 +85,6 @@ import com.example.ui.components.PropertyCard
 import com.example.ui.theme.YvyForestDeep
 import com.example.ui.theme.YvyForestPrimary
 import com.example.ui.theme.YvyGoldAccent
-import com.example.ui.util.CurrencyFormatter
 import com.example.ui.util.ParaguayLocations
 
 private val OPERATION_OPTIONS = listOf(
@@ -109,22 +110,21 @@ fun ExploreScreen(
     allCatalogProperties: List<Property> = filteredProperties,
     favorites: List<FavoriteItem>,
     filter: PropertyFilter,
-    displayCurrency: String,
+    @Suppress("UNUSED_PARAMETER") displayCurrency: String = "PYG",
     isGridView: Boolean,
     visibleCount: Int,
     autoOpenFilter1: Boolean = false,
     onConsumeAutoOpenFilter1: () -> Unit = {},
     onUpdateFilter: ((PropertyFilter) -> PropertyFilter) -> Unit,
     onResetFilters: () -> Unit,
-    onToggleViewMode: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onToggleViewMode: () -> Unit = {},
     onLoadMore: () -> Unit,
     onPropertyClick: (Property) -> Unit,
     onToggleFavorite: (Property) -> Unit
 ) {
     var showFilter1Dropdown by remember { mutableStateOf(false) }
-    var showFilter2Notice by remember { mutableStateOf(false) }
 
-    // Draft state inside Filter 1 panel so the user can combine criteria and apply or update live
+    // Draft state inside Filter 1 panel
     var draftDepartment by remember(filter.department) { mutableStateOf(filter.department) }
     var draftCity by remember(filter.city) { mutableStateOf(filter.city) }
     var draftOperation by remember(filter.operationType) { mutableStateOf(filter.operationType) }
@@ -133,7 +133,6 @@ fun ExploreScreen(
     LaunchedEffect(autoOpenFilter1) {
         if (autoOpenFilter1) {
             showFilter1Dropdown = true
-            showFilter2Notice = false
             onConsumeAutoOpenFilter1()
         }
     }
@@ -149,6 +148,10 @@ fun ExploreScreen(
         if (filter.operationType != "ALL") count++
         if (filter.propertyType != "ALL") count++
         count
+    }
+
+    val hasMultipleCurrenciesInResults = remember(filteredProperties) {
+        filteredProperties.map { it.currency.uppercase().trim() }.distinct().size > 1
     }
 
     // Dynamic cities present in Firestore catalog for the selected draftDepartment
@@ -172,7 +175,7 @@ fun ExploreScreen(
             .testTag("explore_screen")
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Compact Header: Search Bar + ONLY Two Filter Controls (Filtro 1 & Filtro 2)
+            // Compact Header: Search Bar + Single Filter Button (Filtro 1) + Price Sorting Bar + Result Count
             Surface(
                 tonalElevation = 2.dp,
                 shadowElevation = 2.dp,
@@ -184,13 +187,12 @@ fun ExploreScreen(
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Row 1: Compact Search Bar + Filter 1 + Filter 2
+                    // Row 1: Compact Search Bar + Filter 1 (Second filter removed per Requirement #7)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Compact Search Input coherent with HomeScreen
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
@@ -221,7 +223,7 @@ fun ExploreScreen(
                                 ) {
                                     if (filter.searchQuery.isEmpty()) {
                                         Text(
-                                            text = "Buscar tu próxima propiedad...",
+                                            text = "Busca tu próxima propiedad...",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
@@ -258,7 +260,7 @@ fun ExploreScreen(
                             }
                         }
 
-                        // BOTÓN DE FILTRO 1: Ubicación, Operación y Tipo de Propiedad
+                        // BOTÓN DE FILTRO PRINCIPAL: Ubicación, Operación y Tipo de Propiedad
                         Surface(
                             modifier = Modifier
                                 .height(44.dp)
@@ -269,7 +271,6 @@ fun ExploreScreen(
                                     draftOperation = filter.operationType
                                     draftPropertyType = filter.propertyType
                                     showFilter1Dropdown = !showFilter1Dropdown
-                                    if (showFilter1Dropdown) showFilter2Notice = false
                                 }
                                 .testTag("toggle_advanced_filters_btn"),
                             shape = RoundedCornerShape(14.dp),
@@ -290,13 +291,13 @@ fun ExploreScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .padding(horizontal = 10.dp),
+                                    .padding(horizontal = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Tune,
-                                    contentDescription = "Filtro principal: Ubicación, Operación y Tipo",
+                                    contentDescription = "Filtro: Ubicación, Operación y Tipo",
                                     tint = if (showFilter1Dropdown || activeFilter1Count > 0) {
                                         Color.White
                                     } else {
@@ -342,63 +343,131 @@ fun ExploreScreen(
                                 )
                             }
                         }
+                    }
 
-                        // BOTÓN DE FILTRO 2: Pendiente de definición (preparado de forma limpia y modular)
+                    // Row 2: Price Sorting Selector (Below search & filters, Above "Nro. Propiedades disponibles")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.SwapVert,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "Ordenar:",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        val isAsc = filter.sortOrder == "PRICE_ASC"
+                        val isDesc = filter.sortOrder == "PRICE_DESC"
+
                         Surface(
                             modifier = Modifier
-                                .height(44.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .clickable {
-                                    showFilter2Notice = !showFilter2Notice
-                                    if (showFilter2Notice) showFilter1Dropdown = false
+                                    val nextOrder = if (isAsc) "NONE" else "PRICE_ASC"
+                                    onUpdateFilter { it.copy(sortOrder = nextOrder) }
                                 }
-                                .testTag("explore_secondary_filter_btn"),
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (showFilter2Notice) {
-                                MaterialTheme.colorScheme.secondaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                            },
+                                .testTag("sort_price_asc_chip"),
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isAsc) YvyForestPrimary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
                             border = BorderStroke(
                                 width = 1.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                                color = if (isAsc) YvyForestPrimary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
                             )
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .padding(horizontal = 10.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.FilterList,
-                                    contentDescription = "Segundo filtro",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp)
+                                    imageVector = Icons.Default.ArrowUpward,
+                                    contentDescription = null,
+                                    tint = if (isAsc) YvyGoldAccent else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(13.dp)
                                 )
                                 Text(
-                                    text = "Filtro 2",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = "Precio: menor a mayor",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isAsc) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isAsc) Color.White else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    val nextOrder = if (isDesc) "NONE" else "PRICE_DESC"
+                                    onUpdateFilter { it.copy(sortOrder = nextOrder) }
+                                }
+                                .testTag("sort_price_desc_chip"),
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isDesc) YvyForestPrimary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = if (isDesc) YvyForestPrimary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDownward,
+                                    contentDescription = null,
+                                    tint = if (isDesc) YvyGoldAccent else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "Precio: mayor a menor",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isDesc) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isDesc) Color.White else MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
                     }
 
-                    // Active Filter Summary Bar + Result Count
+                    // Row 3: Result Count ("Nro. Propiedades disponibles") + Clear Filters
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "${filteredProperties.size} propiedades disponibles",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column {
+                            Text(
+                                text = "${filteredProperties.size} propiedades disponibles",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (filter.sortOrder != "NONE" && hasMultipleCurrenciesInResults) {
+                                Text(
+                                    text = "Agrupadas por moneda original (₲ PYG • $ USD)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
 
-                        if (activeFilter1Count > 0 || filter.searchQuery.isNotBlank()) {
+                        if (activeFilter1Count > 0 || filter.searchQuery.isNotBlank() || filter.sortOrder != "NONE") {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
@@ -430,7 +499,7 @@ fun ExploreScreen(
                         }
                     }
 
-                    // Active Filter Pills Row (when any filter is active)
+                    // Active Filter Pills Row
                     if (activeFilter1Count > 0) {
                         Row(
                             modifier = Modifier
@@ -480,7 +549,7 @@ fun ExploreScreen(
                 }
             }
 
-            // Results Grid (Compact 2-column grid by default so >= 2 properties are visible simultaneously)
+            // Results Grid (Uniform fixed-size cards)
             if (filteredProperties.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -508,7 +577,6 @@ fun ExploreScreen(
                     }
                 }
             } else if (!isGridView) {
-                // Default 2-column compact grid so at least two properties are visible simultaneously on mobile
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 156.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
@@ -519,7 +587,7 @@ fun ExploreScreen(
                     items(visibleItems, key = { "grid_${it.id}" }) { prop ->
                         PropertyCard(
                             property = prop,
-                            displayCurrency = displayCurrency,
+                            displayCurrency = prop.currency,
                             isFavorite = favoriteIds.contains(prop.id),
                             onCardClick = { onPropertyClick(prop) },
                             onFavoriteClick = { onToggleFavorite(prop) },
@@ -554,7 +622,7 @@ fun ExploreScreen(
                     items(visibleItems, key = { "list_${it.id}" }) { prop ->
                         PropertyCard(
                             property = prop,
-                            displayCurrency = displayCurrency,
+                            displayCurrency = prop.currency,
                             isFavorite = favoriteIds.contains(prop.id),
                             onCardClick = { onPropertyClick(prop) },
                             onFavoriteClick = { onToggleFavorite(prop) },
@@ -583,8 +651,8 @@ fun ExploreScreen(
             }
         }
 
-        // Scrim when anchored dropdown is open so tapping outside closes it cleanly
-        if (showFilter1Dropdown || showFilter2Notice) {
+        // Scrim when anchored dropdown is open
+        if (showFilter1Dropdown) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -595,13 +663,12 @@ fun ExploreScreen(
                         indication = null,
                         onClick = {
                             showFilter1Dropdown = false
-                            showFilter2Notice = false
                         }
                     )
             )
         }
 
-        // ANCHORED DROPDOWN / EXTENSION PANEL FOR FILTER 1 (Never full-screen, respects margins & max height)
+        // ANCHORED DROPDOWN / EXTENSION PANEL FOR FILTER 1
         AnimatedVisibility(
             visible = showFilter1Dropdown,
             enter = fadeIn() + expandVertically(),
@@ -623,7 +690,6 @@ fun ExploreScreen(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // Panel Header
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -659,7 +725,6 @@ fun ExploreScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
 
-                    // Scrollable Body inside controlled height
                     Column(
                         modifier = Modifier
                             .weight(1f, fill = false)
@@ -667,7 +732,7 @@ fun ExploreScreen(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        // 1. Operación Inmobiliaria (Comprar / Alquilar)
+                        // 1. Operación Inmobiliaria
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
                                 text = "1. Operación Inmobiliaria",
@@ -713,7 +778,7 @@ fun ExploreScreen(
                             }
                         }
 
-                        // 2. Ubicación en Paraguay — Departamento o Capital (Asunción + 17 Departamentos)
+                        // 2. Ubicación en Paraguay — Departamento o Capital
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
                                 text = "2. Departamento o Capital (Paraguay)",
@@ -757,7 +822,7 @@ fun ExploreScreen(
                             }
                         }
 
-                        // 3. Ciudad / Distrito en Paraguay (filtrado según el departamento seleccionado)
+                        // 3. Ciudad / Distrito
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
                                 text = if (draftDepartment == "Todos") {
@@ -836,7 +901,6 @@ fun ExploreScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
 
-                    // Panel Footer Actions: Restablecer & Aplicar
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -877,41 +941,6 @@ fun ExploreScreen(
                             Text("Ver ${filteredProperties.size} resultados", fontWeight = FontWeight.Bold)
                         }
                     }
-                }
-            }
-        }
-
-        // ANCHORED EXTENSION FOR FILTER 2 (Modular slot prepared for future specification)
-        AnimatedVisibility(
-            visible = showFilter2Notice,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically(),
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 68.dp, start = 48.dp, end = 14.dp)
-        ) {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "Segundo módulo de filtro",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Espacio modular reservado para los criterios adicionales de filtrado en próximas actualizaciones.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }

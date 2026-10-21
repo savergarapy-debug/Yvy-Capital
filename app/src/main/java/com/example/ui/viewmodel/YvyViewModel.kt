@@ -122,6 +122,8 @@ class YvyViewModel(
 
             matchesQuery && matchesDept && matchesCity && matchesOp && matchesType &&
                 matchesBeds && matchesBaths && matchesParking && matchesArea && matchesFeatured
+        }.let { matched ->
+            sortPropertiesByPriceWithoutConversion(matched, currentFilter.sortOrder)
         }
     }.stateIn(
         scope = viewModelScope,
@@ -694,9 +696,47 @@ class YvyViewModel(
         }
     }
 
-    private companion object {
-        const val TAG = "YvyViewModel"
-        const val STOP_TIMEOUT_MILLIS = 5000L
+    companion object {
+        private const val TAG = "YvyViewModel"
+        private const val STOP_TIMEOUT_MILLIS = 5000L
         const val PAGE_SIZE = 8
+
+        /**
+         * Ordena las propiedades por su precio real sin convertir monedas ni mezclar PYG con USD:
+         * - Agrupa primero por moneda original (PYG, luego USD) y aplica el orden dentro de cada moneda.
+         * - Los registros con precio inválido o <= 0 se ubican al final de manera segura.
+         */
+        fun sortPropertiesByPriceWithoutConversion(
+            properties: List<Property>,
+            sortOrder: String
+        ): List<Property> {
+            val normalizedOrder = sortOrder.uppercase().trim()
+            if (normalizedOrder != "PRICE_ASC" && normalizedOrder != "PRICE_DESC") {
+                return properties
+            }
+
+            val (validPriceProps, invalidPriceProps) = properties.partition {
+                !it.price.isNaN() && !it.price.isInfinite() && it.price > 0.0
+            }
+
+            val currencyPriority = listOf("PYG", "USD")
+            val groupedByCurrency = validPriceProps.groupBy {
+                it.currency.uppercase().trim().ifBlank { "PYG" }
+            }
+
+            val orderedCurrencies = currencyPriority.filter { it in groupedByCurrency.keys } +
+                groupedByCurrency.keys.filterNot { it in currencyPriority }.sorted()
+
+            val sortedValid = orderedCurrencies.flatMap { curr ->
+                val bucket = groupedByCurrency[curr].orEmpty()
+                if (normalizedOrder == "PRICE_ASC") {
+                    bucket.sortedBy { it.price }
+                } else {
+                    bucket.sortedByDescending { it.price }
+                }
+            }
+
+            return sortedValid + invalidPriceProps
+        }
     }
 }

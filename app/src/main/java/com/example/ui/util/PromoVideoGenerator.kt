@@ -135,6 +135,43 @@ object PromoVideoGenerator {
     }
 
     /**
+     * Consulta al asistente inmobiliario de Yvy Capital reutilizando GeminiInteractionsApiService
+     * (v1beta/interactions con gemini-3.5-flash) cuando GEMINI_API_KEY está configurada en Secrets.
+     */
+    suspend fun askYvyAiAssistant(
+        userPrompt: String,
+        previousInteractionId: String? = null
+    ): Result<Pair<String, String>> = withContext(Dispatchers.IO) {
+        runCatching {
+            check(isGeminiKeyConfigured()) {
+                "La clave GEMINI_API_KEY está pendiente de configuración en el panel de Secrets."
+            }
+            val apiKey = BuildConfig.GEMINI_API_KEY
+            val contextualInput = if (previousInteractionId == null) {
+                "Eres el asistente inmobiliario oficial de Yvy Capital en Paraguay. Responde en español de forma clara, profesional y concisa sobre bienes raíces, inversión, publicación de propiedades y membresías Pro en Paraguay.\n\nConsulta del usuario: ${userPrompt.trim()}"
+            } else {
+                userPrompt.trim()
+            }
+            val request = CreateInteractionRequest(
+                model = "gemini-3.5-flash",
+                input = contextualInput,
+                previousInteractionId = previousInteractionId,
+                store = true,
+                stream = false
+            )
+            val response = interactionsService.createInteraction(apiKey, request)
+            val replyText = response.steps
+                ?.lastOrNull { it.type == "model_output" }
+                ?.content
+                ?.firstOrNull { !it.text.isNullOrBlank() }
+                ?.text
+                ?.trim()
+                ?: "Recibí tu consulta correctamente. ¿En qué aspecto específico de tu propiedad o inversión en Yvy Capital te gustaría profundizar?"
+            replyText to response.id
+        }
+    }
+
+    /**
      * Genera un video promocional MP4 real para una propiedad (Exclusivo Plan Senior).
      * Soporta generación automatizada local en dispositivo (sin costo por video) o mediante
      * Gemini Omni Flash (gemini-omni-1.1-flash) si el usuario configuró GEMINI_API_KEY.

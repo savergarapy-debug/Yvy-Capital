@@ -313,8 +313,7 @@ fun PropertyDetailScreen(
                             Text(
                                 text = CurrencyFormatter.formatPrice(
                                     amount = property.price,
-                                    sourceCurrency = property.currency,
-                                    displayCurrency = displayCurrency
+                                    sourceCurrency = property.currency
                                 ),
                                 style = MaterialTheme.typography.headlineMedium,
                                 color = MaterialTheme.colorScheme.primary,
@@ -326,7 +325,7 @@ fun PropertyDetailScreen(
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Text(
-                                text = if (displayCurrency == "USD") "USD ($)" else "PYG (₲)",
+                                text = if (property.currency.uppercase() == "USD") "USD ($)" else "PYG (₲)",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold,

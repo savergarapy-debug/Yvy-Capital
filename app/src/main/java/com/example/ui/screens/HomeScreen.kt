@@ -1,15 +1,9 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +23,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apartment
 import androidx.compose.material.icons.filled.Business
@@ -50,21 +46,24 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.FavoriteItem
@@ -81,8 +80,9 @@ import com.example.ui.viewmodel.UiState
 fun HomeScreen(
     propertiesState: UiState<List<Property>>,
     favorites: List<FavoriteItem>,
-    displayCurrency: String,
-    onToggleCurrency: (String) -> Unit,
+    @Suppress("UNUSED_PARAMETER") displayCurrency: String = "PYG",
+    @Suppress("UNUSED_PARAMETER") onToggleCurrency: (String) -> Unit = {},
+    onSearchSubmit: (String) -> Unit = {},
     onQuickOperationSelect: (String) -> Unit,
     onQuickCategorySelect: (String) -> Unit,
     onNavigateToExplore: () -> Unit,
@@ -92,9 +92,10 @@ fun HomeScreen(
     onPropertyClick: (Property) -> Unit,
     onToggleFavorite: (Property) -> Unit,
     onReloadDemo: () -> Unit,
-    onOpenDeepLinkCenter: () -> Unit = {}
+    @Suppress("UNUSED_PARAMETER") onOpenDeepLinkCenter: () -> Unit = {}
 ) {
     val favoriteIds = favorites.map { it.propertyId }.toSet()
+    var homeSearchQuery by remember { mutableStateOf("") }
 
     LazyColumn(
         modifier = Modifier
@@ -103,7 +104,7 @@ fun HomeScreen(
         contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 1. Hero Header con interruptor deslizante ₲ / $, buscador integrado con filtro y 3 accesos rápidos
+        // 1. Hero Header sin cambio de moneda, con buscador editable ("Busca tu próxima propiedad...") y 3 accesos rápidos
         item {
             Box(
                 modifier = Modifier
@@ -116,30 +117,18 @@ fun HomeScreen(
                     .padding(horizontal = 18.dp, vertical = 20.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Yvy Capital",
-                                style = MaterialTheme.typography.headlineMedium,
-                                color = YvyBeigeWarm,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Inversiones & Bienes Raíces",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = YvyGoldAccent,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        // Compact Sliding Currency Switch (₲ / $)
-                        CurrencySlidingSwitch(
-                            selectedCurrency = displayCurrency,
-                            onSelectCurrency = onToggleCurrency
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "Yvy Capital",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = YvyBeigeWarm,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Inversiones & Bienes Raíces",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = YvyGoldAccent,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
 
@@ -155,37 +144,74 @@ fun HomeScreen(
                             .fillMaxWidth()
                             .height(52.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = YvyBeigeWarm,
+                        color = Color.White,
                         shadowElevation = 6.dp
                     ) {
                         Row(
                             modifier = Modifier.fillMaxSize(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Search Trigger Area
+                            // Editable Search Area with discreet light-gray placeholder
                             Row(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
-                                    .clickable(onClick = onNavigateToExplore)
+                                    .clickable {
+                                        if (homeSearchQuery.isBlank()) {
+                                            onNavigateToExplore()
+                                        } else {
+                                            onSearchSubmit(homeSearchQuery)
+                                        }
+                                    }
                                     .padding(horizontal = 16.dp)
                                     .testTag("home_search_bar"),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Search,
-                                    contentDescription = "Buscar tu próxima propiedad",
+                                    contentDescription = "Buscar propiedades",
                                     tint = YvyForestPrimary,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clickable {
+                                            if (homeSearchQuery.isNotBlank()) {
+                                                onSearchSubmit(homeSearchQuery)
+                                            } else {
+                                                onNavigateToExplore()
+                                            }
+                                        }
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = "Buscar tu próxima propiedad",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = YvyForestDeep,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Box(
+                                    modifier = Modifier.weight(1f),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (homeSearchQuery.isEmpty()) {
+                                        Text(
+                                            text = "Busca tu próxima propiedad...",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color(0xFF7A827D),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    BasicTextField(
+                                        value = homeSearchQuery,
+                                        onValueChange = { homeSearchQuery = it },
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                            color = YvyForestDeep
+                                        ),
+                                        cursorBrush = SolidColor(YvyForestPrimary),
+                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                        keyboardActions = KeyboardActions(
+                                            onSearch = {
+                                                onSearchSubmit(homeSearchQuery)
+                                            }
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
                             }
 
                             // Subtle Vertical Divider Line
@@ -226,7 +252,7 @@ fun HomeScreen(
                         }
                     }
 
-                    // 3 Quick Access Buttons: Comprar, Alquilar, Favoritos (Removed "Enlace")
+                    // 3 Quick Access Buttons: Comprar, Alquilar, Favoritos
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -263,30 +289,15 @@ fun HomeScreen(
             }
         }
 
-        // 2. Categorías Inmobiliarias (Rediseñadas con estética moderna y limpia)
+        // 2. Categorías Inmobiliarias (Sin el elemento "Explorar catálogos")
         item {
             Column(modifier = Modifier.padding(horizontal = 18.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Categorías Inmobiliarias",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = "Explorar catálogo",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable(onClick = onNavigateToExplore)
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    )
-                }
+                Text(
+                    text = "Categorías Inmobiliarias",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier
@@ -304,7 +315,7 @@ fun HomeScreen(
             }
         }
 
-        // 3. Estado del Catálogo: Propiedades Destacadas y Últimas Publicaciones
+        // 3. Estado del Catálogo: Propiedades Destacadas (tamaño mayor fijo) y Últimas Publicaciones (tamaño compacto fijo)
         when (propertiesState) {
             is UiState.Loading -> {
                 item {
@@ -393,7 +404,7 @@ fun HomeScreen(
                         }
                     }
                 } else {
-                    // Propiedades Destacadas (Carrusel Horizontal Compacto)
+                    // Propiedades Destacadas (Carrusel Horizontal con tamaño diferenciado mayor y uniforme: 276.dp x 232.dp)
                     item {
                         Column {
                             Row(
@@ -430,24 +441,24 @@ fun HomeScreen(
 
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 18.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
                                 items(featuredList, key = { "featured_${it.id}" }) { prop ->
                                     PropertyCard(
                                         property = prop,
-                                        displayCurrency = displayCurrency,
+                                        displayCurrency = prop.currency,
                                         isFavorite = favoriteIds.contains(prop.id),
                                         onCardClick = { onPropertyClick(prop) },
                                         onFavoriteClick = { onToggleFavorite(prop) },
-                                        compact = true,
-                                        modifier = Modifier.width(236.dp)
+                                        compact = false,
+                                        modifier = Modifier.width(276.dp)
                                     )
                                 }
                             }
                         }
                     }
 
-                    // Últimas Publicaciones (Cuadrícula compacta de 2 columnas para visualizar >= 2 propiedades simultáneamente)
+                    // Últimas Publicaciones (Cuadrícula de 2 columnas con tamaño compacto fijo y uniforme: 196.dp de alto)
                     item {
                         Row(
                             modifier = Modifier
@@ -485,7 +496,7 @@ fun HomeScreen(
                             pair.forEach { prop ->
                                 PropertyCard(
                                     property = prop,
-                                    displayCurrency = displayCurrency,
+                                    displayCurrency = prop.currency,
                                     isFavorite = favoriteIds.contains(prop.id),
                                     onCardClick = { onPropertyClick(prop) },
                                     onFavoriteClick = { onToggleFavorite(prop) },
@@ -502,7 +513,7 @@ fun HomeScreen(
             }
         }
 
-        // 4. Banner Yvy Capital Pro & Contacto Corporativo
+        // 4. Sección Promocional Yvy Capital Pro Asesores e Inmobiliarias (con botón "Vuélvete Pro", sin "Abrir enlace directo")
         item {
             Card(
                 modifier = Modifier
@@ -526,7 +537,7 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Yvy Capital Pro • Asesores & Desarrolladoras",
+                            text = "Yvy Capital Pro Asesores e Inmobiliarias",
                             style = MaterialTheme.typography.titleMedium,
                             color = Color.White,
                             fontWeight = FontWeight.Bold
@@ -537,129 +548,19 @@ fun HomeScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = YvyBeigeWarm.copy(alpha = 0.88f)
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.padding(top = 4.dp)
+                    Button(
+                        onClick = onNavigateToPro,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = YvyGoldAccent,
+                            contentColor = YvyForestDeep
+                        ),
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .testTag("home_pro_portal_btn")
                     ) {
-                        Button(
-                            onClick = onNavigateToPro,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = YvyGoldAccent,
-                                contentColor = YvyForestDeep
-                            ),
-                            modifier = Modifier.testTag("home_pro_portal_btn")
-                        ) {
-                            Text("Abrir Espacio Asesor Pro", fontWeight = FontWeight.Bold)
-                        }
-                        OutlinedButton(
-                            onClick = onOpenDeepLinkCenter,
-                            modifier = Modifier.testTag("home_deeplink_center_btn")
-                        ) {
-                            Text("Abrir Enlace Directo", color = YvyBeigeWarm)
-                        }
+                        Text("Vuélvete Pro", fontWeight = FontWeight.Bold)
                     }
                 }
-            }
-        }
-    }
-}
-
-/**
- * Interruptor deslizante moderno y minimalista para alternar entre Guaraníes (₲) y Dólares ($).
- */
-@Composable
-private fun CurrencySlidingSwitch(
-    selectedCurrency: String,
-    onSelectCurrency: (String) -> Unit
-) {
-    val isUsd = selectedCurrency.uppercase() == "USD"
-    val indicatorOffset by animateDpAsState(
-        targetValue = if (isUsd) 42.dp else 0.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "currency_slide_offset"
-    )
-
-    val pygTextColor by animateColorAsState(
-        targetValue = if (!isUsd) YvyForestDeep else Color.White.copy(alpha = 0.78f),
-        label = "pyg_text_color"
-    )
-    val usdTextColor by animateColorAsState(
-        targetValue = if (isUsd) YvyForestDeep else Color.White.copy(alpha = 0.78f),
-        label = "usd_text_color"
-    )
-
-    Box(
-        modifier = Modifier
-            .width(88.dp)
-            .height(38.dp)
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.28f))
-            .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                role = Role.Switch,
-                onClick = {
-                    val next = if (isUsd) "PYG" else "USD"
-                    onSelectCurrency(next)
-                }
-            )
-            .padding(3.dp)
-            .testTag("currency_toggle_chip")
-    ) {
-        // Animated Sliding Pill
-        Box(
-            modifier = Modifier
-                .offset(x = indicatorOffset)
-                .width(40.dp)
-                .fillMaxHeight()
-                .clip(CircleShape)
-                .background(YvyGoldAccent)
-        )
-
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { if (isUsd) onSelectCurrency("PYG") }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "₲",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = pygTextColor
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { if (!isUsd) onSelectCurrency("USD") }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "$",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = usdTextColor
-                )
             }
         }
     }

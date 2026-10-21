@@ -243,5 +243,6 @@ data class PropertyFilter(
     val minBathrooms: Int = 0,
     val minParking: Int = 0,
     val minAreaM2: Int = 0,
-    val onlyFeatured: Boolean = false
+    val onlyFeatured: Boolean = false,
+    val sortOrder: String = "NONE" // "NONE", "PRICE_ASC", "PRICE_DESC"
 )

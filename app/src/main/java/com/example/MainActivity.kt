@@ -362,6 +362,10 @@ fun YvyMainWorkspace(
                                     favorites = favoritesList,
                                     displayCurrency = displayCurrency,
                                     onToggleCurrency = { viewModel.setDisplayCurrency(it) },
+                                    onSearchSubmit = { query ->
+                                        viewModel.updateFilter { it.copy(searchQuery = query) }
+                                        currentTab = YvyNavTab.EXPLORE
+                                    },
                                     onQuickOperationSelect = { op ->
                                         viewModel.updateFilter { it.copy(operationType = op) }
                                         currentTab = YvyNavTab.EXPLORE
@@ -381,7 +385,7 @@ fun YvyMainWorkspace(
                                         currentTab = YvyNavTab.FAVORITES
                                     },
                                     onNavigateToPro = {
-                                        profileInitialSubTab = 1
+                                        profileInitialSubTab = 6
                                         currentTab = YvyNavTab.PROFILE
                                     },
                                     onPropertyClick = { selectedProperty = it },

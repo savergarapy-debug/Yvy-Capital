@@ -115,20 +115,22 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun currencyFormatter_andParaguayLocations_meetSingleCurrencyAndGeoRequirements() {
+    fun currencyFormatter_andParaguayLocations_preserveAuthorCurrencyWithoutConversion() {
+        // Author currency PYG remains ₲ even if displayCurrency is USD
         val pygPrice = com.example.ui.util.CurrencyFormatter.formatPrice(
             amount = 2_150_000_000.0,
             sourceCurrency = "PYG",
-            displayCurrency = "PYG"
+            displayCurrency = "USD"
         )
         assertTrue(pygPrice.startsWith("₲ "))
         assertFalse(pygPrice.contains("$"))
         assertFalse(pygPrice.contains("USD"))
 
+        // Author currency USD remains $ even if displayCurrency is PYG
         val usdPrice = com.example.ui.util.CurrencyFormatter.formatPrice(
             amount = 385_000.0,
             sourceCurrency = "USD",
-            displayCurrency = "USD"
+            displayCurrency = "PYG"
         )
         assertTrue(usdPrice.startsWith("$ "))
         assertFalse(usdPrice.contains("₲"))
@@ -157,5 +159,31 @@ class ExampleUnitTest {
         assertTrue(centralCities.contains("Todas"))
         assertTrue(centralCities.contains("Luque"))
         assertTrue(centralCities.contains("San Lorenzo"))
+
+        val publishCities = com.example.ui.util.ParaguayLocations.citiesForPublishDepartment("Central")
+        assertFalse(publishCities.contains("Todas"))
+        assertTrue(publishCities.contains("Luque"))
+    }
+
+    @Test
+    fun priceSorting_ordersByRealPriceWithinOriginalCurrencyWithoutFakeConversion() {
+        val sampleList = listOf(
+            Property(id = "usd-high", title = "Casa USD cara", price = 450_000.0, currency = "USD"),
+            Property(id = "pyg-high", title = "Casa PYG cara", price = 1_850_000_000.0, currency = "PYG"),
+            Property(id = "usd-low", title = "Depto USD menor", price = 120_000.0, currency = "USD"),
+            Property(id = "pyg-low", title = "Terreno PYG menor", price = 320_000_000.0, currency = "PYG")
+        )
+
+        val asc = com.example.ui.viewmodel.YvyViewModel.sortPropertiesByPriceWithoutConversion(
+            sampleList,
+            "PRICE_ASC"
+        )
+        assertEquals(listOf("pyg-low", "pyg-high", "usd-low", "usd-high"), asc.map { it.id })
+
+        val desc = com.example.ui.viewmodel.YvyViewModel.sortPropertiesByPriceWithoutConversion(
+            sampleList,
+            "PRICE_DESC"
+        )
+        assertEquals(listOf("pyg-high", "pyg-low", "usd-high", "usd-low"), desc.map { it.id })
     }
 }

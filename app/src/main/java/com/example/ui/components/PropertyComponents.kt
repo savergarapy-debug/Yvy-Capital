@@ -7,8 +7,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -67,7 +65,7 @@ import com.example.ui.util.DeepLinkHandler
 @Composable
 fun PropertyArtworkHeader(
     property: Property,
-    height: Dp = 128.dp,
+    height: Dp = 136.dp,
     variantIndex: Int = 0
 ) {
     val palette = when ((property.id.hashCode() + variantIndex) % 4) {
@@ -185,11 +183,16 @@ fun PropertyArtworkHeader(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Tarjeta de propiedad con dimensiones fijas y uniformes por variante:
+ * - compact = false (Propiedades Destacadas / Vista expandida): altura fija 232.dp, imagen 134.dp
+ * - compact = true (Últimas Publicaciones / Cuadrícula uniforme): altura fija 196.dp, imagen 108.dp
+ * Garantiza que la cantidad de caracteres nunca altere el alto ni el ancho de la tarjeta.
+ */
 @Composable
 fun PropertyCard(
     property: Property,
-    displayCurrency: String,
+    displayCurrency: String = property.currency,
     isFavorite: Boolean,
     onCardClick: () -> Unit,
     onFavoriteClick: () -> Unit,
@@ -197,11 +200,13 @@ fun PropertyCard(
     compact: Boolean = false
 ) {
     val context = LocalContext.current
-    val imageHeight = if (compact) 108.dp else 124.dp
+    val cardHeight = if (compact) 196.dp else 232.dp
+    val imageHeight = if (compact) 108.dp else 134.dp
 
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .height(cardHeight)
             .clickable(onClick = onCardClick)
             .testTag("property_card_${property.id}"),
         shape = RoundedCornerShape(16.dp),
@@ -210,8 +215,12 @@ fun PropertyCard(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column {
-            Box {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(imageHeight)
+            ) {
                 PropertyArtworkHeader(
                     property = property,
                     height = imageHeight
@@ -239,6 +248,7 @@ fun PropertyCard(
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = if (property.operationType == "SALE") Color.White else YvyForestDeep,
+                                maxLines = 1,
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                             )
                         }
@@ -252,6 +262,7 @@ fun PropertyCard(
                                     text = CurrencyFormatter.propertyTypeLabel(property.propertyType),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White,
+                                    maxLines = 1,
                                     modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                                 )
                             }
@@ -263,7 +274,6 @@ fun PropertyCard(
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Discreet, compact Share button
                         Box(
                             modifier = Modifier
                                 .minimumInteractiveComponentSize()
@@ -272,7 +282,7 @@ fun PropertyCard(
                                     indication = null,
                                     role = Role.Button,
                                     onClick = {
-                                        DeepLinkHandler.shareProperty(context, property, displayCurrency)
+                                        DeepLinkHandler.shareProperty(context, property, property.currency)
                                     }
                                 )
                                 .testTag("share_card_btn_${property.id}"),
@@ -294,8 +304,7 @@ fun PropertyCard(
                             }
                         }
 
-                        // Favorite Heart Button: NO dark circular background or circular border.
-                        // Pure heart icon with white outline when unselected and filled heart when selected.
+                        // Favorite Heart Button: Pure heart icon without dark circular background or border
                         Box(
                             modifier = Modifier
                                 .minimumInteractiveComponentSize()
@@ -308,7 +317,6 @@ fun PropertyCard(
                                 .testTag("favorite_btn_${property.id}"),
                             contentAlignment = Alignment.Center
                         ) {
-                            // Subtle drop-shadow icon layer for contrast on bright photos (no circle)
                             Icon(
                                 imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 contentDescription = null,
@@ -318,7 +326,6 @@ fun PropertyCard(
                                     .offset(x = 0.8.dp, y = 1.dp)
                             )
                             if (isFavorite) {
-                                // Filled heart + crisp white perimeter
                                 Icon(
                                     imageVector = Icons.Default.Favorite,
                                     contentDescription = "Quitar de favoritos",
@@ -332,7 +339,6 @@ fun PropertyCard(
                                     modifier = Modifier.size(22.dp)
                                 )
                             } else {
-                                // Only white outline heart when not favorite
                                 Icon(
                                     imageVector = Icons.Default.FavoriteBorder,
                                     contentDescription = "Guardar en favoritos",
@@ -344,29 +350,30 @@ fun PropertyCard(
                     }
                 }
 
-                // Bottom Overlay Price inside Image (SINGLE CURRENCY ONLY)
+                // Bottom Overlay Price inside Image (Author's selected currency only)
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Bottom
                 ) {
                     Text(
                         text = CurrencyFormatter.formatPrice(
                             amount = property.price,
-                            sourceCurrency = property.currency,
-                            displayCurrency = displayCurrency
+                            sourceCurrency = property.currency
                         ),
                         style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                         color = Color.White,
                         fontWeight = FontWeight.ExtraBold,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
 
                     if (compact) {
+                        Spacer(modifier = Modifier.width(4.dp))
                         Surface(
                             color = Color.Black.copy(alpha = 0.48f),
                             shape = RoundedCornerShape(5.dp)
@@ -376,26 +383,35 @@ fun PropertyCard(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = YvyBeigeWarm,
                                 maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                             )
                         }
                     }
                 }
             }
 
-            // Compact Card Content Body
+            // Fixed-height Card Content Body (Never grows or shrinks with text length)
             Column(
-                modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        horizontal = if (compact) 10.dp else 12.dp,
+                        vertical = if (compact) 8.dp else 10.dp
+                    ),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
+                // Slot 1: Fixed 1-line Title
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(if (compact) 20.dp else 22.dp)
                 ) {
                     Text(
                         text = property.title,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -412,7 +428,13 @@ fun PropertyCard(
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Slot 2: Fixed 1-line Location
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(18.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.LocationOn,
                         contentDescription = "Ubicación",
@@ -433,10 +455,13 @@ fun PropertyCard(
                     )
                 }
 
-                // Compact Key Metrics Row
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                // Slot 3: Fixed 1-line Key Metrics Row (Never wraps to multiple lines)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(22.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     MetricBadge(
                         icon = Icons.Default.SquareFoot,
@@ -445,13 +470,13 @@ fun PropertyCard(
                     if (property.bedrooms > 0) {
                         MetricBadge(
                             icon = Icons.Default.Bed,
-                            text = "${property.bedrooms} dorm."
+                            text = if (compact) "${property.bedrooms}d" else "${property.bedrooms} dorm."
                         )
                     }
                     if (property.bathrooms > 0) {
                         MetricBadge(
                             icon = Icons.Default.Bathtub,
-                            text = "${property.bathrooms} b."
+                            text = if (compact) "${property.bathrooms}b" else "${property.bathrooms} b."
                         )
                     }
                     if (!compact && property.parkingSpaces > 0) {
@@ -489,7 +514,8 @@ fun MetricBadge(
             text = text,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1
+            maxLines = 1,
+            overflow = TextOverflow.Clip
         )
     }
 }
