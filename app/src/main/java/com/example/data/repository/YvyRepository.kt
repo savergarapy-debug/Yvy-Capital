@@ -14,12 +14,14 @@ import com.google.firebase.auth.auth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
+import java.util.UUID
 
 class YvyRepository(private val db: FirebaseFirestore) {
 
@@ -92,82 +94,76 @@ class YvyRepository(private val db: FirebaseFirestore) {
     suspend fun createProperty(property: Property): Result<String> = runCatching {
         val uid = requireUserId()
         val path = "properties"
+        val propId = if (property.id.isNotBlank() && !property.id.startsWith("demo-") && !property.id.startsWith("py_")) {
+            property.id
+        } else {
+            "prop_" + UUID.randomUUID().toString().replace("-", "").take(20)
+        }
+        val propRef = db.collection(path).document(propId)
+        val counterRef = db.collection("listingCounters").document(uid)
+        val isActive = property.status == "active"
+
         try {
-            val docRef = if (property.id.isNotBlank()) {
-                db.collection(path).document(property.id)
-            } else {
-                db.collection(path).document()
-            }
-
-            val isDemoSeed = docRef.id.startsWith("demo-") || docRef.id.startsWith("py_")
-            val userDocRef = db.collection("users").document(uid)
-            val userSnap = userDocRef.get().await()
-            val profile = if (userSnap.exists()) {
-                userSnap.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-            } else {
-                null
-            }
-
-            if (!isDemoSeed && profile != null) {
-                val maxAllowed = AdvisorMemberships.maxListingsForTier(profile.planTier)
-                if (maxAllowed <= 0) {
-                    throw IllegalStateException("Debes activar un plan de membresía de Asesor (Inicial, Intermedio o Senior) para publicar propiedades.")
+            db.runTransaction { transaction ->
+                val newCount = if (isActive) {
+                    val counterSnap = transaction.get(counterRef)
+                    val currentCount = if (counterSnap.exists()) counterSnap.getLong("count") ?: 0L else 0L
+                    currentCount + 1L
+                } else {
+                    0L
                 }
-                if (profile.activeListingsCount >= maxAllowed) {
-                    throw IllegalStateException("Alcanzaste el límite de $maxAllowed publicaciones activas de tu ${AdvisorMemberships.displayNameForTier(profile.planTier)}.")
-                }
-                if (property.featured && !AdvisorMemberships.canFeatureForTier(profile.planTier)) {
-                    throw IllegalStateException("Las publicaciones destacadas requieren el Plan Intermedio o Plan Senior.")
-                }
-            }
 
-            val payload = mapOf(
-                "title" to property.title,
-                "description" to property.description,
-                "operationType" to property.operationType,
-                "propertyType" to property.propertyType,
-                "price" to property.price,
-                "currency" to property.currency,
-                "department" to property.department,
-                "city" to property.city,
-                "neighborhood" to property.neighborhood,
-                "address" to property.address,
-                "latitude" to property.latitude,
-                "longitude" to property.longitude,
-                "areaTotalM2" to property.areaTotalM2,
-                "areaBuiltM2" to property.areaBuiltM2,
-                "bedrooms" to property.bedrooms,
-                "bathrooms" to property.bathrooms,
-                "parkingSpaces" to property.parkingSpaces,
-                "amenities" to property.amenities,
-                "imageUrls" to property.imageUrls,
-                "featured" to property.featured,
-                "status" to property.status,
-                "agentId" to uid,
-                "agentName" to property.agentName,
-                "agentAgency" to property.agentAgency,
-                "agentWhatsapp" to property.agentWhatsapp,
-                "verified" to property.verified,
-                "viewsCount" to property.viewsCount.coerceAtLeast(0L),
-                "createdAt" to FieldValue.serverTimestamp(),
-                "updatedAt" to FieldValue.serverTimestamp()
-            )
-            docRef.set(payload).await()
+                val payload = mapOf(
+                    "title" to property.title,
+                    "description" to property.description,
+                    "operationType" to property.operationType,
+                    "propertyType" to property.propertyType,
+                    "price" to property.price,
+                    "currency" to property.currency,
+                    "department" to property.department,
+                    "city" to property.city,
+                    "neighborhood" to property.neighborhood,
+                    "address" to property.address,
+                    "latitude" to property.latitude,
+                    "longitude" to property.longitude,
+                    "areaTotalM2" to property.areaTotalM2,
+                    "areaBuiltM2" to property.areaBuiltM2,
+                    "bedrooms" to property.bedrooms,
+                    "bathrooms" to property.bathrooms,
+                    "parkingSpaces" to property.parkingSpaces,
+                    "amenities" to property.amenities,
+                    "imageUrls" to property.imageUrls,
+                    "featured" to property.featured,
+                    "status" to property.status,
+                    "agentId" to uid,
+                    "agentName" to property.agentName,
+                    "agentAgency" to property.agentAgency,
+                    "agentWhatsapp" to property.agentWhatsapp,
+                    "verified" to false, // verified siempre false al publicar
+                    "viewsCount" to property.viewsCount.coerceAtLeast(0L),
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
 
-            if (!isDemoSeed && profile != null) {
-                val newCount = (profile.activeListingsCount + 1L).coerceAtMost(10L)
-                userDocRef.update(
-                    mapOf(
-                        "activeListingsCount" to newCount,
-                        "updatedAt" to FieldValue.serverTimestamp()
+                transaction.set(propRef, payload)
+
+                if (isActive) {
+                    transaction.set(
+                        counterRef,
+                        mapOf(
+                            "count" to newCount,
+                            "lastPropertyId" to propId
+                        )
                     )
-                ).await()
-            }
-
-            docRef.id
+                }
+                propId
+            }.await()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            if (e is FirebaseFirestoreException && e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                throw IllegalStateException("Alcanzaste el límite de publicaciones activas de tu plan. Pausá o vendé una propiedad, o mejorá tu plan.")
+            }
             handleFirestoreError(e, OperationType.CREATE, path)
             throw e
         }
@@ -198,18 +194,54 @@ class YvyRepository(private val db: FirebaseFirestore) {
     }
 
     suspend fun updatePropertyStatus(propertyId: String, newStatus: String): Result<Unit> = runCatching {
-        requireUserId()
+        val uid = requireUserId()
         val path = "properties/$propertyId"
+        val propRef = db.collection("properties").document(propertyId)
+        val counterRef = db.collection("listingCounters").document(uid)
+
         try {
-            db.collection("properties").document(propertyId).update(
-                mapOf(
-                    "status" to newStatus,
-                    "updatedAt" to FieldValue.serverTimestamp()
+            db.runTransaction { transaction ->
+                val propSnap = transaction.get(propRef)
+                val oldStatus = propSnap.getString("status") ?: "active"
+
+                val isBecomingActive = oldStatus != "active" && newStatus == "active"
+                val isCeasingActive = oldStatus == "active" && newStatus != "active"
+
+                var newCount: Long? = null
+                if (isBecomingActive || isCeasingActive) {
+                    val counterSnap = transaction.get(counterRef)
+                    val currentCount = if (counterSnap.exists()) counterSnap.getLong("count") ?: 0L else 0L
+                    newCount = if (isBecomingActive) {
+                        currentCount + 1L
+                    } else {
+                        (currentCount - 1L).coerceAtLeast(0L)
+                    }
+                }
+
+                transaction.update(
+                    propRef,
+                    mapOf(
+                        "status" to newStatus,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
                 )
-            ).await()
+
+                if (newCount != null) {
+                    transaction.set(
+                        counterRef,
+                        mapOf(
+                            "count" to newCount,
+                            "lastPropertyId" to propertyId
+                        )
+                    )
+                }
+            }.await()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            if (e is FirebaseFirestoreException && e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                throw IllegalStateException("Alcanzaste el límite de publicaciones activas de tu plan. Pausá o vendé una propiedad, o mejorá tu plan.")
+            }
             handleFirestoreError(e, OperationType.UPDATE, path)
             throw e
         }
@@ -218,27 +250,59 @@ class YvyRepository(private val db: FirebaseFirestore) {
     suspend fun deleteProperty(propertyId: String): Result<Unit> = runCatching {
         val uid = requireUserId()
         val path = "properties/$propertyId"
+        val propRef = db.collection("properties").document(propertyId)
+        val counterRef = db.collection("listingCounters").document(uid)
+
         try {
-            db.collection("properties").document(propertyId).delete().await()
-            val isDemoSeed = propertyId.startsWith("demo-") || propertyId.startsWith("py_")
-            if (!isDemoSeed) {
-                val userDocRef = db.collection("users").document(uid)
-                val snap = userDocRef.get().await()
-                if (snap.exists()) {
-                    val currentCount = snap.getLong("activeListingsCount") ?: 0L
-                    val nextCount = (currentCount - 1L).coerceAtLeast(0L)
-                    userDocRef.update(
-                        mapOf(
-                            "activeListingsCount" to nextCount,
-                            "updatedAt" to FieldValue.serverTimestamp()
-                        )
-                    ).await()
+            db.runTransaction { transaction ->
+                val propSnap = transaction.get(propRef)
+                val status = propSnap.getString("status") ?: "active"
+                val wasActive = status == "active"
+
+                var newCount: Long? = null
+                if (wasActive) {
+                    val counterSnap = transaction.get(counterRef)
+                    val currentCount = if (counterSnap.exists()) counterSnap.getLong("count") ?: 0L else 0L
+                    newCount = (currentCount - 1L).coerceAtLeast(0L)
                 }
-            }
+
+                transaction.delete(propRef)
+
+                if (wasActive && newCount != null) {
+                    transaction.set(
+                        counterRef,
+                        mapOf(
+                            "count" to newCount,
+                            "lastPropertyId" to propertyId
+                        )
+                    )
+                }
+            }.await()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            if (e is FirebaseFirestoreException && e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                throw IllegalStateException("Alcanzaste el límite de publicaciones activas de tu plan. Pausá o vendé una propiedad, o mejorá tu plan.")
+            }
             handleFirestoreError(e, OperationType.DELETE, path)
+            throw e
+        }
+    }
+
+    suspend fun updatePropertyVerified(propertyId: String, verified: Boolean): Result<Unit> = runCatching {
+        requireUserId()
+        val path = "properties/$propertyId"
+        try {
+            db.collection("properties").document(propertyId).update(
+                mapOf(
+                    "verified" to verified,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
             throw e
         }
     }
@@ -427,10 +491,13 @@ class YvyRepository(private val db: FirebaseFirestore) {
         val uid = requireUserId()
         val path = "property_videos"
         try {
+            val staffSnap = db.collection("staff").document(uid).get().await()
+            val isActiveStaff = staffSnap.exists() && staffSnap.getBoolean("active") == true
+
             val userSnap = db.collection("users").document(uid).get().await()
             val currentTier = userSnap.getString("planTier") ?: AdvisorMemberships.TIER_FREE
-            if (!AdvisorMemberships.isSeniorTier(currentTier)) {
-                throw IllegalStateException("El Generador de Videos Promocionales es exclusivo para asesores con Membresía Plan Senior.")
+            if (!isActiveStaff && !AdvisorMemberships.isSeniorTier(currentTier)) {
+                throw IllegalStateException("El Generador de Videos Promocionales es exclusivo para asesores con Membresía Plan Senior o personal de Yvy Capital.")
             }
 
             val docRef = if (video.id.isNotBlank()) {

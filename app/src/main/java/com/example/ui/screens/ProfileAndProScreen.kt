@@ -2,10 +2,13 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,38 +21,33 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.AddBusiness
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Badge
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Handshake
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MovieCreation
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.AddBusiness
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Handshake
+import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.MovieCreation
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.VerifiedUser
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.WorkspacePremium
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -59,24 +57,36 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.AdvisorMemberships
+import com.example.data.model.EffectivePlan
+import com.example.data.model.MembershipRequest
 import com.example.data.model.Property
 import com.example.data.model.PropertyInquiry
 import com.example.data.model.PropertyPromoVideo
 import com.example.data.model.UserProfile
 import com.example.ui.components.AdvisorMembershipPlansDialog
+import com.example.ui.components.EmptyState
 import com.example.ui.components.PromoVideoPreviewDialog
+import com.example.ui.components.SectionHeader
 import com.example.ui.components.SeniorDirectCollaborationDialog
 import com.example.ui.components.SeniorVideoGeneratorDialog
-import com.example.ui.theme.YvyForestDeep
-import com.example.ui.theme.YvyForestPrimary
-import com.example.ui.theme.YvyGoldAccent
+import com.example.ui.components.StaffBadge
+import com.example.ui.components.StatusBadge
+import com.example.ui.components.StatusBadgeTone
+import com.example.ui.components.YvyButton
+import com.example.ui.components.YvyButtonVariant
+import com.example.ui.components.YvyChip
+import com.example.ui.components.YvyTopBar
+import com.example.ui.theme.YvyPriceCardStyle
+import com.example.ui.theme.YvyProGold
+import com.example.ui.theme.YvyShapes
+import com.example.ui.theme.YvySpacing
 import com.example.ui.util.PromoVideoGenerator
 import com.example.ui.viewmodel.UiState
 import com.google.firebase.auth.FirebaseAuth
@@ -97,12 +107,16 @@ fun ProfileAndProScreen(
     agentPropertiesState: UiState<List<Property>>,
     agentInquiriesState: UiState<List<PropertyInquiry>>,
     agentPromoVideosState: UiState<List<PropertyPromoVideo>> = UiState.Success(emptyList()),
+    userMembershipRequests: List<MembershipRequest> = emptyList(),
+    effectivePlan: EffectivePlan = EffectivePlan(),
+    isPublicStaff: Boolean = false,
+    isStaffUser: (String) -> Boolean = { false },
     catalogProperties: List<Property> = emptyList(),
     displayCurrency: String = "PYG",
     isBusy: Boolean,
     initialTab: Int = 0,
     onSaveProfile: (displayName: String, phone: String, preferredCurrency: String, role: String, agencyName: String) -> Unit,
-    onActivateAdvisorPlan: (planTier: String, displayName: String, phone: String, agencyName: String, externalAgentMode: Boolean) -> Unit = { _, _, _, _, _ -> },
+    onRequestPlan: (planTier: String, paymentMethod: String, paymentReference: String) -> Unit = { _, _, _ -> },
     onToggleExternalAgentMode: (Boolean) -> Unit = {},
     onPublishProperty: (
         title: String,
@@ -154,9 +168,9 @@ fun ProfileAndProScreen(
     var activeSubscreen by remember(initialRoute) { mutableStateOf(initialRoute) }
 
     val profile = (userProfileState as? UiState.Success)?.data
-    val currentTier = profile?.planTier ?: AdvisorMemberships.TIER_FREE
-    val currentPlanSpec = AdvisorMemberships.getSpec(currentTier)
-    val isSeniorMember = AdvisorMemberships.isSeniorTier(currentTier)
+    val isStaff = effectivePlan.isStaff || isPublicStaff
+    val currentTier = effectivePlan.tier
+    val isSeniorMember = isStaff || AdvisorMemberships.isSeniorTier(currentTier)
 
     var showPrivacyDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -172,7 +186,6 @@ fun ProfileAndProScreen(
     val myInquiries = (agentInquiriesState as? UiState.Success)?.data ?: emptyList()
     val myPromoVideos = (agentPromoVideosState as? UiState.Success)?.data ?: emptyList()
 
-    // BackHandler returns to the main Perfil menu when inside any of the 6 subscreens
     BackHandler(enabled = activeSubscreen != ProfileSubscreen.MENU) {
         activeSubscreen = ProfileSubscreen.MENU
     }
@@ -180,12 +193,15 @@ fun ProfileAndProScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .testTag("profile_pro_screen")
     ) {
         when (activeSubscreen) {
             ProfileSubscreen.MENU -> {
                 ProfileMainHubMenu(
                     profile = profile,
+                    effectivePlan = effectivePlan,
+                    isStaff = isStaff,
                     activePublicationsCount = realActiveCount,
                     onSelectSubscreen = { activeSubscreen = it }
                 )
@@ -218,7 +234,9 @@ fun ProfileAndProScreen(
                     onBack = { activeSubscreen = ProfileSubscreen.MENU },
                     onOpenAdvisorPlans = {
                         activeSubscreen = ProfileSubscreen.CONVERTITE_EN_PRO
-                        showBecomeAdvisorDialog = true
+                        if (!isStaff) {
+                            showBecomeAdvisorDialog = true
+                        }
                     },
                     onOpenSeniorVideoGenerator = {
                         if (isSeniorMember) {
@@ -259,12 +277,16 @@ fun ProfileAndProScreen(
             ProfileSubscreen.CONVERTITE_EN_PRO -> {
                 ConvertiteEnProSubscreen(
                     profile = profile,
+                    effectivePlan = effectivePlan,
+                    isStaff = isStaff,
                     myProperties = myProperties,
                     myInquiries = myInquiries,
                     myPromoVideos = myPromoVideos,
+                    userMembershipRequests = userMembershipRequests,
                     isBusy = isBusy,
+                    isStaffUser = isStaffUser,
                     onBack = { activeSubscreen = ProfileSubscreen.MENU },
-                    onOpenAdvisorPlansModal = { showBecomeAdvisorDialog = true },
+                    onOpenAdvisorPlansModal = { if (!isStaff) showBecomeAdvisorDialog = true },
                     onOpenPublishSubscreen = { activeSubscreen = ProfileSubscreen.PUBLICAR },
                     onOpenVideoGenerator = { showVideoGeneratorDialog = true },
                     onOpenSeniorCollaboration = { showSeniorCollaborationDialog = true },
@@ -299,9 +321,11 @@ fun ProfileAndProScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = { showPrivacyDialog = false }) {
-                    Text("Entendido")
-                }
+                YvyButton(
+                    text = "Entendido",
+                    onClick = { showPrivacyDialog = false },
+                    variant = YvyButtonVariant.PRIMARY
+                )
             }
         )
     }
@@ -334,19 +358,12 @@ fun ProfileAndProScreen(
         )
     }
 
-    // Ventana de 3 Planes de Membresía ("Convertite en Pro")
     if (showBecomeAdvisorDialog) {
         AdvisorMembershipPlansDialog(
             currentProfile = profile,
             isBusy = isBusy,
-            onSelectAndActivatePlan = { chosenTier, agency, externalMode ->
-                onActivateAdvisorPlan(
-                    chosenTier,
-                    profile?.displayName ?: "Asesor Yvy Capital",
-                    profile?.phone?.ifBlank { "+595981" } ?: "+595981",
-                    agency,
-                    externalMode
-                )
+            onRequestPlan = { chosenTier, paymentMethod, paymentReference ->
+                onRequestPlan(chosenTier, paymentMethod, paymentReference)
                 showBecomeAdvisorDialog = false
                 activeSubscreen = ProfileSubscreen.CONVERTITE_EN_PRO
             },
@@ -354,7 +371,6 @@ fun ProfileAndProScreen(
         )
     }
 
-    // Generador de Videos Promocionales (Exclusivo Plan Senior)
     if (showVideoGeneratorDialog && isSeniorMember) {
         val candidateProps = myProperties.ifEmpty { catalogProperties }
         SeniorVideoGeneratorDialog(
@@ -371,7 +387,6 @@ fun ProfileAndProScreen(
         )
     }
 
-    // Reproductor / Vista previa del video promocional generado
     val currentPreviewVideo = previewingVideo
     if (currentPreviewVideo != null) {
         PromoVideoPreviewDialog(
@@ -383,7 +398,6 @@ fun ProfileAndProScreen(
         )
     }
 
-    // Mesa de Cierre Directo con Asesores de Yvy Capital (Exclusivo Plan Senior)
     if (showSeniorCollaborationDialog && isSeniorMember) {
         SeniorDirectCollaborationDialog(
             advisorName = profile?.displayName ?: "Asesor Senior",
@@ -395,19 +409,11 @@ fun ProfileAndProScreen(
     }
 }
 
-/**
- * 11. ESTRUCTURA PRINCIPAL DE LA PESTAÑA «PERFIL»
- * Menú limpio con las 6 opciones de navegación claramente identificadas:
- * 1. Perfil
- * 2. Publicar
- * 3. Información de la cuenta
- * 4. Contactar con la IA
- * 5. Configuración
- * 6. Convertite en Pro
- */
 @Composable
 private fun ProfileMainHubMenu(
     profile: UserProfile?,
+    effectivePlan: EffectivePlan,
+    isStaff: Boolean,
     activePublicationsCount: Int,
     onSelectSubscreen: (ProfileSubscreen) -> Unit
 ) {
@@ -415,143 +421,162 @@ private fun ProfileMainHubMenu(
     val displayName = profile?.displayName?.ifBlank { authUser?.displayName ?: "Usuario Yvy Capital" }
         ?: (authUser?.displayName ?: "Usuario Yvy Capital")
     val email = profile?.email?.ifBlank { authUser?.email ?: "" } ?: (authUser?.email ?: "")
-    val currentTier = profile?.planTier ?: AdvisorMemberships.TIER_FREE
+    val currentTier = effectivePlan.tier
     val currentPlanSpec = AdvisorMemberships.getSpec(currentTier)
 
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("profile_main_menu_list")
-    ) {
-        // Cabecera de identidad del usuario autenticado
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = YvyForestDeep),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+    Column(modifier = Modifier.fillMaxSize()) {
+        YvyTopBar(title = "Mi perfil")
+
+        LazyColumn(
+            contentPadding = PaddingValues(
+                horizontal = YvySpacing.ScreenHorizontal,
+                vertical = 16.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("profile_main_menu_list")
+        ) {
+            // Flat User Summary Card (#FFFFFF surface, 1.dp #E6E1D8 border)
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = YvyShapes.Card,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = YvyGoldAccent.copy(alpha = 0.22f),
-                        modifier = Modifier.size(56.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = null,
-                                tint = YvyGoldAccent,
-                                modifier = Modifier.size(30.dp)
-                            )
-                        }
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = displayName,
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
-                        if (email.isNotBlank()) {
-                            Text(
-                                text = email,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.82f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = YvyGoldAccent.copy(alpha = 0.2f)
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.size(52.dp)
                         ) {
-                            Text(
-                                text = currentPlanSpec?.let { "${it.name} • Publicaciones activas: $activePublicationsCount" }
-                                    ?: "Cuenta Estándar • Publicaciones activas: $activePublicationsCount",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = YvyGoldAccent,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Person,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = displayName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (isStaff) {
+                                    StaffBadge()
+                                }
+                            }
+                            if (email.isNotBlank()) {
+                                Text(
+                                    text = email,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (isStaff) {
+                                    StatusBadge(
+                                        text = "Plan Senior · Personal Yvy Capital",
+                                        tone = StatusBadgeTone.MONTE_PRIMARY
+                                    )
+                                } else {
+                                    StatusBadge(
+                                        text = currentPlanSpec?.name ?: "Cuenta Estándar",
+                                        tone = if (currentPlanSpec != null) StatusBadgeTone.PRO_GOLD else StatusBadgeTone.NEUTRAL_OUTLINED
+                                    )
+                                }
+                                StatusBadge(
+                                    text = "Activas: $activePublicationsCount",
+                                    tone = StatusBadgeTone.NEUTRAL_OUTLINED
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // 1. Perfil
-        item {
-            ProfileHubMenuItemCard(
-                title = "Perfil",
-                subtitle = "Información personal y resumen del vendedor",
-                icon = Icons.Default.Person,
-                testTag = "profile_menu_perfil",
-                onClick = { onSelectSubscreen(ProfileSubscreen.PERFIL) }
-            )
-        }
+            // 1. Perfil
+            item {
+                ProfileHubMenuItemCard(
+                    title = "Perfil",
+                    icon = Icons.Outlined.Person,
+                    testTag = "profile_menu_perfil",
+                    onClick = { onSelectSubscreen(ProfileSubscreen.PERFIL) }
+                )
+            }
 
-        // 2. Publicar
-        item {
-            ProfileHubMenuItemCard(
-                title = "Publicar",
-                subtitle = "Nueva propiedad, subida de fotos y gestión de anuncios",
-                icon = Icons.Default.AddBusiness,
-                testTag = "profile_menu_publicar",
-                onClick = { onSelectSubscreen(ProfileSubscreen.PUBLICAR) }
-            )
-        }
+            // 2. Publicar
+            item {
+                ProfileHubMenuItemCard(
+                    title = "Publicar",
+                    icon = Icons.Outlined.AddBusiness,
+                    badgeText = "$activePublicationsCount activas",
+                    testTag = "profile_menu_publicar",
+                    onClick = { onSelectSubscreen(ProfileSubscreen.PUBLICAR) }
+                )
+            }
 
-        // 3. Información de la cuenta
-        item {
-            ProfileHubMenuItemCard(
-                title = "Información de la cuenta",
-                subtitle = "Datos de autenticación, membresía y seguridad",
-                icon = Icons.Default.VerifiedUser,
-                testTag = "profile_menu_cuenta",
-                onClick = { onSelectSubscreen(ProfileSubscreen.INFORMACION_CUENTA) }
-            )
-        }
+            // 3. Información de la cuenta
+            item {
+                ProfileHubMenuItemCard(
+                    title = "Información de la cuenta",
+                    icon = Icons.Outlined.VerifiedUser,
+                    testTag = "profile_menu_cuenta",
+                    onClick = { onSelectSubscreen(ProfileSubscreen.INFORMACION_CUENTA) }
+                )
+            }
 
-        // 4. Contactar con la IA
-        item {
-            ProfileHubMenuItemCard(
-                title = "Contactar con la IA",
-                subtitle = "Consultas inmobiliarias asistidas por inteligencia artificial",
-                icon = Icons.Default.AutoAwesome,
-                testTag = "profile_menu_ia",
-                onClick = { onSelectSubscreen(ProfileSubscreen.CONTACTAR_IA) }
-            )
-        }
+            // 4. Contactar con la IA
+            item {
+                ProfileHubMenuItemCard(
+                    title = "Contactar con la IA",
+                    icon = Icons.Outlined.AutoAwesome,
+                    testTag = "profile_menu_ia",
+                    onClick = { onSelectSubscreen(ProfileSubscreen.CONTACTAR_IA) }
+                )
+            }
 
-        // 5. Configuración
-        item {
-            ProfileHubMenuItemCard(
-                title = "Configuración",
-                subtitle = "Preferencias operativas, modo agente externo y privacidad",
-                icon = Icons.Default.Settings,
-                testTag = "profile_menu_configuracion",
-                onClick = { onSelectSubscreen(ProfileSubscreen.CONFIGURACION) }
-            )
-        }
+            // 5. Configuración
+            item {
+                ProfileHubMenuItemCard(
+                    title = "Configuración",
+                    icon = Icons.Outlined.Settings,
+                    testTag = "profile_menu_configuracion",
+                    onClick = { onSelectSubscreen(ProfileSubscreen.CONFIGURACION) }
+                )
+            }
 
-        // 6. Convertite en Pro
-        item {
-            ProfileHubMenuItemCard(
-                title = "Convertite en Pro",
-                subtitle = "Planes Inicial, Intermedio y Senior para asesores e inmobiliarias",
-                icon = Icons.Default.WorkspacePremium,
-                isHighlighted = true,
-                testTag = "profile_menu_pro",
-                onClick = { onSelectSubscreen(ProfileSubscreen.CONVERTITE_EN_PRO) }
-            )
+            // 6. Convertite en Pro o Beneficios de Personal
+            item {
+                ProfileHubMenuItemCard(
+                    title = if (isStaff) "Beneficios del Personal" else "Convertite en Pro",
+                    icon = Icons.Outlined.WorkspacePremium,
+                    badgeText = if (isStaff) "Plan Senior" else (currentPlanSpec?.name ?: "Pro"),
+                    isHighlighted = true,
+                    testTag = "profile_menu_pro",
+                    onClick = { onSelectSubscreen(ProfileSubscreen.CONVERTITE_EN_PRO) }
+                )
+            }
         }
     }
 }
@@ -559,8 +584,8 @@ private fun ProfileMainHubMenu(
 @Composable
 private fun ProfileHubMenuItemCard(
     title: String,
-    subtitle: String,
     icon: ImageVector,
+    badgeText: String? = null,
     isHighlighted: Boolean = false,
     testTag: String,
     onClick: () -> Unit
@@ -570,20 +595,15 @@ private fun ProfileHubMenuItemCard(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .testTag(testTag),
-        shape = RoundedCornerShape(18.dp),
+        shape = YvyShapes.Card,
         colors = CardDefaults.cardColors(
-            containerColor = if (isHighlighted) {
-                YvyForestDeep
-            } else {
-                MaterialTheme.colorScheme.surface
-            }
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = if (isHighlighted) {
-            BorderStroke(1.5.dp, YvyGoldAccent)
-        } else {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-        },
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isHighlighted) YvyProGold else MaterialTheme.colorScheme.outline
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
@@ -592,58 +612,51 @@ private fun ProfileHubMenuItemCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = if (isHighlighted) {
-                    YvyGoldAccent.copy(alpha = 0.2f)
-                } else {
-                    YvyForestPrimary.copy(alpha = 0.1f)
-                },
-                modifier = Modifier.size(44.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = if (isHighlighted) YvyGoldAccent else YvyForestPrimary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isHighlighted) Color.White else MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isHighlighted) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isHighlighted) YvyProGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            if (badgeText != null) {
+                StatusBadge(
+                    text = badgeText,
+                    tone = if (isHighlighted) StatusBadgeTone.PRO_GOLD else StatusBadgeTone.NEUTRAL_OUTLINED
                 )
             }
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                 contentDescription = "Abrir $title",
-                tint = if (isHighlighted) YvyGoldAccent else MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
 
 /**
- * 18. SUBPANTALLA «CONVERTITE EN PRO»
- * Contiene los 3 planes de membresía (Inicial, Intermedio y Senior), beneficios,
- * herramientas exclusivas Senior y gestión de consultas de clientes.
+ * SUBPANTALLA «CONVERTITE EN PRO»
+ * Cumple contraste WCAG AA (4.5:1) en tarjetas de planes Pro: título en #1C1B19, precio en #B5532E (tnum),
+ * beneficios en #1C1B19 y botón de selección de alto contraste.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ConvertiteEnProSubscreen(
     profile: UserProfile?,
+    effectivePlan: EffectivePlan,
+    isStaff: Boolean,
     myProperties: List<Property>,
     myInquiries: List<PropertyInquiry>,
     myPromoVideos: List<PropertyPromoVideo>,
+    userMembershipRequests: List<MembershipRequest> = emptyList(),
     isBusy: Boolean,
+    isStaffUser: (String) -> Boolean = { false },
     onBack: () -> Unit,
     onOpenAdvisorPlansModal: () -> Unit,
     onOpenPublishSubscreen: () -> Unit,
@@ -652,32 +665,99 @@ private fun ConvertiteEnProSubscreen(
     onPreviewVideo: (PropertyPromoVideo) -> Unit,
     onShareVideo: (PropertyPromoVideo) -> Unit,
     onDeleteVideo: (String) -> Unit,
-    onToggleExternalAgentMode: (Boolean) -> Unit,
+    @Suppress("UNUSED_PARAMETER") onToggleExternalAgentMode: (Boolean) -> Unit,
     onUpdateInquiryStatus: (inquiryId: String, newStatus: String) -> Unit
 ) {
-    val currentTier = profile?.planTier ?: AdvisorMemberships.TIER_FREE
+    val currentTier = effectivePlan.tier
     val currentPlanSpec = AdvisorMemberships.getSpec(currentTier)
-    val isSeniorMember = AdvisorMemberships.isSeniorTier(currentTier)
+    val isSeniorMember = isStaff || AdvisorMemberships.isSeniorTier(currentTier)
     val totalViews = remember(myProperties) { myProperties.sumOf { it.viewsCount } }
 
     Column(modifier = Modifier.fillMaxSize()) {
         SubscreenTopBar(
-            title = "Convertite en Pro",
-            subtitle = "Planes para asesores e inmobiliarias y herramientas avanzadas",
+            title = if (isStaff) "Beneficios del Personal" else "Convertite en Pro",
+            subtitle = "",
             onBack = onBack
         )
 
         LazyColumn(
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(
+                horizontal = YvySpacing.ScreenHorizontal,
+                vertical = 16.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            // Cabecera de Membresía y Estadísticas Pro
+            val latestReq = userMembershipRequests.firstOrNull()
+            if (latestReq != null && !isStaff) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("membership_request_status_card"),
+                        shape = YvyShapes.Card,
+                        colors = CardDefaults.cardColors(
+                            containerColor = when (latestReq.status) {
+                                "APPROVED" -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                                "REJECTED" -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
+                                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                            }
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Estado de Solicitud de Membresía",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                StatusBadge(
+                                    text = when (latestReq.status) {
+                                        "APPROVED" -> "APROBADA"
+                                        "REJECTED" -> "RECHAZADA"
+                                        else -> "PENDIENTE"
+                                    },
+                                    tone = when (latestReq.status) {
+                                        "APPROVED" -> StatusBadgeTone.MONTE_PRIMARY
+                                        "REJECTED" -> StatusBadgeTone.NEUTRAL_OUTLINED
+                                        else -> StatusBadgeTone.PRO_GOLD
+                                    }
+                                )
+                            }
+                            if (latestReq.status == "PENDING") {
+                                Text(
+                                    text = "Solicitud enviada. Un administrador de Yvy Capital la activará al confirmar el pago.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Text(
+                                text = "Plan: ${AdvisorMemberships.displayNameForTier(latestReq.planTier)} • Pago: ${latestReq.paymentMethod} • Ref: ${latestReq.paymentReference}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Cabecera de Membresía y Estadísticas Pro (flat surface card, high contrast)
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = YvyForestDeep)
+                    shape = YvyShapes.Card,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(20.dp),
@@ -688,172 +768,250 @@ private fun ConvertiteEnProSubscreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.WorkspacePremium,
-                                        contentDescription = null,
-                                        tint = YvyGoldAccent
-                                    )
-                                    Text(
-                                        text = currentPlanSpec?.name ?: "Yvy Capital Pro",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Text(
-                                    text = if (currentPlanSpec != null) {
-                                        "${currentPlanSpec.priceFormatted} • Participación ${currentPlanSpec.advisorParticipationPercent}"
-                                    } else {
-                                        "Elige tu plan Inicial, Intermedio o Senior para publicar y acceder a comisiones"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.85f)
+                            Text(
+                                text = if (isStaff) "Plan Senior · Personal Yvy Capital" else (currentPlanSpec?.name ?: "Yvy Capital Pro"),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            if (isStaff) {
+                                StaffBadge()
+                            } else {
+                                StatusBadge(
+                                    text = if (currentPlanSpec != null) "Membresía activa" else "Cuenta Estándar",
+                                    tone = if (currentPlanSpec != null) StatusBadgeTone.PRO_GOLD else StatusBadgeTone.NEUTRAL_OUTLINED
                                 )
                             }
-                            OutlinedButton(
-                                onClick = onOpenAdvisorPlansModal,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = YvyGoldAccent),
-                                modifier = Modifier.testTag("become_advisor_btn")
-                            ) {
-                                Text(if (currentPlanSpec == null) "Ver Planes" else "Cambiar Plan")
-                            }
+                        }
+
+                        if (isStaff) {
+                            Text(
+                                text = "Membresía bonificada para personal · Participación 80%",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        } else if (currentPlanSpec != null) {
+                            Text(
+                                text = "${currentPlanSpec.priceFormatted} · Participación ${currentPlanSpec.advisorParticipationPercent}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.secondary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        // 4 Indicadores con el mismo ancho exacto y etiquetas de una sola línea
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val maxAllowed = if (isStaff) 10 else (currentPlanSpec?.maxActiveListings ?: 0)
+                            StatPill(
+                                label = "Activas",
+                                value = "${myProperties.size}/$maxAllowed",
+                                modifier = Modifier.weight(1f)
+                            )
+                            StatPill(
+                                label = "Vistas",
+                                value = totalViews.toString(),
+                                modifier = Modifier.weight(1f)
+                            )
+                            StatPill(
+                                label = "Comisión",
+                                value = if (isStaff) "80%" else (currentPlanSpec?.advisorParticipationPercent ?: "—"),
+                                modifier = Modifier.weight(1f)
+                            )
+                            StatPill(
+                                label = "Consultas",
+                                value = myInquiries.size.toString(),
+                                modifier = Modifier.weight(1f)
+                            )
                         }
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            val maxAllowed = currentPlanSpec?.maxActiveListings ?: 0
-                            StatPill(
-                                label = "Activas / Límite",
-                                value = "${myProperties.size} / $maxAllowed"
-                            )
-                            StatPill(
-                                label = "Visualizaciones",
-                                value = totalViews.toString()
-                            )
-                            StatPill(
-                                label = "Comisión",
-                                value = currentPlanSpec?.advisorParticipationPercent ?: "—"
-                            )
-                            StatPill(
-                                label = "Consultas",
-                                value = myInquiries.size.toString()
-                            )
-                        }
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Button(
+                            YvyButton(
+                                text = "Ir a publicar",
                                 onClick = onOpenPublishSubscreen,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = YvyGoldAccent,
-                                    contentColor = YvyForestDeep
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("publish_property_btn")
-                            ) {
-                                Icon(Icons.Default.AddBusiness, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Ir a Publicar", fontWeight = FontWeight.Bold)
+                                variant = YvyButtonVariant.PRIMARY,
+                                leadingIcon = Icons.Outlined.AddBusiness,
+                                fullWidth = isStaff,
+                                modifier = if (isStaff) Modifier.fillMaxWidth() else Modifier.weight(1f),
+                                testTag = "publish_property_btn"
+                            )
+
+                            if (!isStaff) {
+                                YvyButton(
+                                    text = if (currentPlanSpec == null) "Ver planes" else "Cambiar plan",
+                                    onClick = onOpenAdvisorPlansModal,
+                                    variant = YvyButtonVariant.SECONDARY_OUTLINED,
+                                    modifier = Modifier.weight(1f),
+                                    testTag = "become_advisor_btn"
+                                )
                             }
                         }
                     }
                 }
             }
 
-            // Resumen comparativo de los 3 planes de membresía
-            item {
-                Text(
-                    text = "Planes disponibles en Yvy Capital Pro",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            if (!isStaff) {
+                // Planes disponibles en Yvy Capital Pro
+                item {
+                    SectionHeader(title = "Planes disponibles en Yvy Capital Pro")
+                }
 
-            items(AdvisorMemberships.ALL_PLANS, key = { it.code }) { plan ->
-                val isCurrent = currentTier == plan.code
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isCurrent) {
-                            YvyForestPrimary.copy(alpha = 0.08f)
-                        } else {
-                            MaterialTheme.colorScheme.surface
-                        }
-                    ),
-                    border = BorderStroke(
-                        width = if (isCurrent) 2.dp else 1.dp,
-                        color = if (isCurrent) YvyForestPrimary else MaterialTheme.colorScheme.outlineVariant
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = plan.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "${plan.priceFormatted} • Máx. ${plan.maxActiveListings} publicaciones",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = YvyForestPrimary,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                items(AdvisorMemberships.ALL_PLANS, key = { it.code }) { plan ->
+                    val isCurrent = currentTier == plan.code
+                    val isSenior = plan.code == AdvisorMemberships.TIER_SENIOR
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = YvyShapes.Card,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        border = BorderStroke(
+                            width = if (isCurrent || isSenior) 1.5.dp else 1.dp,
+                            color = when {
+                                isCurrent -> MaterialTheme.colorScheme.primary
+                                isSenior -> YvyProGold
+                                else -> MaterialTheme.colorScheme.outline
                             }
-                            if (isCurrent) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = YvyForestPrimary
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "PLAN ACTIVO",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        text = plan.name,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
                                     )
+                                    if (isSenior) {
+                                        StatusBadge(
+                                            text = "Recomendado",
+                                            tone = StatusBadgeTone.PRO_GOLD
+                                        )
+                                    } else if (isCurrent) {
+                                        StatusBadge(
+                                            text = "Activo",
+                                            tone = StatusBadgeTone.MONTE_PRIMARY
+                                        )
+                                    }
                                 }
-                            } else {
-                                OutlinedButton(
-                                    onClick = onOpenAdvisorPlansModal,
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Text("Seleccionar")
+
+                                // Precio en tierra roja (#B5532E) con cifras tabulares (tnum) y alto contraste WCAG AA
+                                Text(
+                                    text = plan.priceFormatted,
+                                    style = YvyPriceCardStyle,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+
+                                Text(
+                                    text = "Máx. ${plan.maxActiveListings} publicaciones activas · Comisión ${plan.advisorParticipationPercent}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
+
+                            // Lista de beneficios con texto #1C1B19 sobre fondo #FFFFFF
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                plan.benefits.forEach { benefit ->
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .padding(top = 2.dp)
+                                        )
+                                        Text(
+                                            text = benefit,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
                                 }
                             }
-                        }
 
-                        plan.benefits.forEach { benefit ->
-                            Row(
-                                verticalAlignment = Alignment.Top,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = YvyForestPrimary,
-                                    modifier = Modifier
-                                        .size(16.dp)
-                                        .padding(top = 2.dp)
-                                )
+                            // Botón a lo ancho de la tarjeta con alto contraste WCAG AA
+                            YvyButton(
+                                text = if (isCurrent) "Plan actual" else "Seleccionar",
+                                onClick = onOpenAdvisorPlansModal,
+                                variant = if (isCurrent) YvyButtonVariant.SECONDARY_OUTLINED else YvyButtonVariant.PRIMARY,
+                                fullWidth = true,
+                                testTag = "plan_select_btn_${plan.code}"
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Tarjeta informativa para personal de Yvy Capital (sin botones de pago ni upgrade)
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = YvyShapes.Card,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.VerifiedUser,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = benefit,
+                                    text = "Plan Senior · Personal Yvy Capital",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Tu cuenta de personal cuenta con todos los beneficios del Plan Senior bonificados permanentemente: hasta 10 inmuebles en catálogo, generación de videos promocionales MP4 y acceso a Mesa de Cierre.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -863,85 +1021,94 @@ private fun ConvertiteEnProSubscreen(
                 }
             }
 
-            // Herramientas Exclusivas del Plan Senior (Videos IA/MP4 + Colaboración Directa)
+            // Herramientas Exclusivas del Plan Senior
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = YvyShapes.Card,
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Videocam,
+                                imageVector = Icons.Outlined.Videocam,
                                 contentDescription = null,
-                                tint = if (isSeniorMember) YvyForestPrimary else MaterialTheme.colorScheme.outline
+                                tint = YvyProGold
                             )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Generador de Videos Promocionales MP4 e IA",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = if (isSeniorMember) {
-                                        "Exclusivo Plan Senior Activo: convierte las fotos de tu propiedad en un video promocional MP4."
-                                    } else {
-                                        "Función bloqueada: requiere suscripción activa al Plan Senior (G. 249.000/mes)."
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(
+                                text = "Generador de videos promocionales MP4",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+                            StatusBadge(
+                                text = "Senior",
+                                tone = StatusBadgeTone.PRO_GOLD
+                            )
                         }
 
+                        Text(
+                            text = if (isStaff) {
+                                "Beneficio exclusivo de personal de Yvy Capital: convierte las fotos de tu propiedad en un video promocional MP4."
+                            } else if (isSeniorMember) {
+                                "Exclusivo Plan Senior activo: convierte las fotos de tu propiedad en un video promocional MP4."
+                            } else {
+                                "Requiere suscripción activa al Plan Senior (G. 249.000/mes)."
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
                         if (isSeniorMember) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                YvyButton(
+                                    text = "Crear video MP4",
                                     onClick = onOpenVideoGenerator,
                                     enabled = !isBusy,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("open_senior_video_generator_btn")
-                                ) {
-                                    Icon(Icons.Default.MovieCreation, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Crear Video MP4")
-                                }
-                                OutlinedButton(
+                                    variant = YvyButtonVariant.PRIMARY,
+                                    leadingIcon = Icons.Outlined.MovieCreation,
+                                    modifier = Modifier.weight(1f),
+                                    testTag = "open_senior_video_generator_btn"
+                                )
+                                YvyButton(
+                                    text = "Mesa Senior",
                                     onClick = onOpenSeniorCollaboration,
+                                    variant = YvyButtonVariant.SECONDARY_OUTLINED,
+                                    leadingIcon = Icons.Outlined.Handshake,
                                     modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(Icons.Default.Handshake, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Mesa Senior")
-                                }
+                                )
                             }
 
                             if (myPromoVideos.isNotEmpty()) {
-                                HorizontalDivider()
+                                HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
                                 Text(
-                                    text = "Videos Generados (${myPromoVideos.size})",
+                                    text = "Videos generados (${myPromoVideos.size})",
                                     style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.SemiBold
                                 )
                                 myPromoVideos.forEach { vid ->
                                     Surface(
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                        shape = YvyShapes.FieldAndButton,
+                                        color = MaterialTheme.colorScheme.background,
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(10.dp),
+                                                .padding(12.dp),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
@@ -949,32 +1116,36 @@ private fun ConvertiteEnProSubscreen(
                                                 Text(
                                                     text = vid.propertyTitle,
                                                     style = MaterialTheme.typography.labelLarge,
-                                                    fontWeight = FontWeight.Bold
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                                 Text(
-                                                    text = "Formato ${vid.aspectRatio} • ${vid.durationSeconds}s",
+                                                    text = "Formato ${vid.aspectRatio} · ${vid.durationSeconds}s",
                                                     style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                             }
                                             Row {
                                                 IconButton(onClick = { onPreviewVideo(vid) }) {
                                                     Icon(
-                                                        imageVector = Icons.Default.PlayArrow,
+                                                        imageVector = Icons.Outlined.PlayArrow,
                                                         contentDescription = "Ver video",
-                                                        tint = YvyForestPrimary
+                                                        tint = MaterialTheme.colorScheme.primary
                                                     )
                                                 }
                                                 IconButton(onClick = { onShareVideo(vid) }) {
                                                     Icon(
-                                                        imageVector = Icons.Default.Share,
+                                                        imageVector = Icons.Outlined.Share,
                                                         contentDescription = "Compartir video MP4",
-                                                        tint = YvyForestPrimary
+                                                        tint = MaterialTheme.colorScheme.primary
                                                     )
                                                 }
                                                 IconButton(onClick = { onDeleteVideo(vid.id) }) {
                                                     Icon(
-                                                        imageVector = Icons.Default.Delete,
+                                                        imageVector = Icons.Outlined.DeleteOutline,
                                                         contentDescription = "Eliminar video",
                                                         tint = MaterialTheme.colorScheme.error
                                                     )
@@ -985,16 +1156,14 @@ private fun ConvertiteEnProSubscreen(
                                 }
                             }
                         } else {
-                            OutlinedButton(
+                            YvyButton(
+                                text = "Actualizar a Plan Senior",
                                 onClick = onOpenAdvisorPlansModal,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("unlock_senior_video_btn")
-                            ) {
-                                Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Actualizar a Plan Senior para Crear Videos con IA")
-                            }
+                                variant = YvyButtonVariant.SECONDARY_OUTLINED,
+                                leadingIcon = Icons.Outlined.Lock,
+                                fullWidth = true,
+                                testTag = "unlock_senior_video_btn"
+                            )
                         }
                     }
                 }
@@ -1002,36 +1171,27 @@ private fun ConvertiteEnProSubscreen(
 
             // Consultas recibidas de clientes
             item {
-                Text(
-                    text = "Consultas y Solicitudes de Clientes (${myInquiries.size})",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                SectionHeader(
+                    title = "Consultas y solicitudes de clientes (${myInquiries.size})"
                 )
             }
 
             if (myInquiries.isEmpty()) {
                 item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        )
-                    ) {
-                        Text(
-                            text = "Aún no tienes solicitudes pendientes. Cuando un interesado solicite una visita en tus propiedades, aparecerá aquí en tiempo real.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
+                    EmptyState(
+                        title = "Aún no tienes solicitudes pendientes",
+                        description = "Cuando un interesado solicite una visita en tus propiedades, aparecerá aquí en tiempo real.",
+                        icon = Icons.Outlined.Inbox
+                    )
                 }
             } else {
                 items(myInquiries, key = { it.id }) { inq ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = YvyShapes.Card,
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
@@ -1040,27 +1200,41 @@ private fun ConvertiteEnProSubscreen(
                             Text(
                                 text = inq.propertyTitle,
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-                            Text(
-                                text = "Cliente: ${inq.userName} • Tel: ${inq.userPhone}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Cliente: ${inq.userName} · Tel: ${inq.userPhone}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                if (isStaffUser(inq.userId)) {
+                                    StaffBadge()
+                                }
+                            }
                             Text(
                                 text = inq.message,
-                                style = MaterialTheme.typography.bodyMedium
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 listOf(
                                     "CONTACTED" to "Contactado",
-                                    "VISIT_SCHEDULED" to "Visita Agendada",
+                                    "VISIT_SCHEDULED" to "Visita agendada",
                                     "CLOSED" to "Cerrado"
                                 ).forEach { (statusKey, statusLabel) ->
-                                    FilterChip(
+                                    YvyChip(
+                                        label = statusLabel,
                                         selected = inq.status == statusKey,
-                                        onClick = { onUpdateInquiryStatus(inq.id, statusKey) },
-                                        label = { Text(statusLabel) }
+                                        onClick = { onUpdateInquiryStatus(inq.id, statusKey) }
                                     )
                                 }
                             }
@@ -1073,25 +1247,39 @@ private fun ConvertiteEnProSubscreen(
 }
 
 @Composable
-private fun StatPill(label: String, value: String) {
+private fun StatPill(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Color.White.copy(alpha = 0.14f)
+        modifier = modifier,
+        shape = YvyShapes.FieldAndButton,
+        color = MaterialTheme.colorScheme.background,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleSmall,
-                color = YvyGoldAccent,
-                fontWeight = FontWeight.Bold
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

@@ -104,9 +104,13 @@ import androidx.compose.ui.unit.dp
 import com.example.data.model.AdvisorMemberships
 import com.example.data.model.Property
 import com.example.data.model.UserProfile
+import com.example.ui.components.YvyButton
+import com.example.ui.components.YvyButtonVariant
+import com.example.ui.components.YvyTopBar
 import com.example.ui.theme.YvyForestDeep
 import com.example.ui.theme.YvyForestPrimary
 import com.example.ui.theme.YvyGoldAccent
+import com.example.ui.theme.YvyShapes
 import com.example.ui.util.CurrencyFormatter
 import com.example.ui.util.DeepLinkHandler
 import com.example.ui.util.ParaguayLocations
@@ -117,46 +121,14 @@ import kotlinx.coroutines.launch
 @Composable
 fun SubscreenTopBar(
     title: String,
-    subtitle: String,
+    subtitle: String = "",
     onBack: () -> Unit
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.testTag("profile_subscreen_back_btn")
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Volver a Perfil",
-                    tint = YvyForestPrimary
-                )
-            }
-            Spacer(modifier = Modifier.width(4.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
+    YvyTopBar(
+        title = title,
+        onBack = onBack,
+        backButtonTestTag = "profile_subscreen_back_btn"
+    )
 }
 
 /**
@@ -581,46 +553,31 @@ fun PublicarPropiedadSubscreen(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = YvyForestDeep)
+                    shape = YvyShapes.Card,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(18.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Nueva propiedad",
-                                style = MaterialTheme.typography.titleLarge,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Completa las secciones del inmueble para publicarlo en Yvy Capital",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.85f)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Button(
+                        Text(
+                            text = "Nueva propiedad",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        YvyButton(
+                            text = if (showNewPropertyForm) "Formulario activo" else "Nueva propiedad",
                             onClick = { showNewPropertyForm = !showNewPropertyForm },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = YvyGoldAccent,
-                                contentColor = YvyForestDeep
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.testTag("toggle_new_property_form_btn")
-                        ) {
-                            Icon(Icons.Default.AddBusiness, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (showNewPropertyForm) "Formulario activo" else "Nueva propiedad",
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                            variant = if (showNewPropertyForm) YvyButtonVariant.SECONDARY_OUTLINED else YvyButtonVariant.PRIMARY,
+                            leadingIcon = Icons.Default.AddBusiness,
+                            fullWidth = true,
+                            testTag = "toggle_new_property_form_btn"
+                        )
                     }
                 }
             }
@@ -948,17 +905,32 @@ fun PublicarPropiedadSubscreen(
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             FilterChip(
                                 selected = currency == "PYG",
                                 onClick = { currency = "PYG" },
-                                label = { Text("Guaraníes (PYG, ₲)") },
+                                label = {
+                                    Text(
+                                        text = "Guaraníes (PYG, ₲)",
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                },
                                 modifier = Modifier.testTag("publish_currency_pyg")
                             )
                             FilterChip(
                                 selected = currency == "USD",
                                 onClick = { currency = "USD" },
-                                label = { Text("Dólares estadounidenses (USD, $)") },
+                                label = {
+                                    Text(
+                                        text = "Dólares estadounidenses (USD, $)",
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                },
                                 modifier = Modifier.testTag("publish_currency_usd")
                             )
                         }

@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -34,33 +35,30 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SwapVert
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Clear
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.SearchOff
+import androidx.compose.material.icons.outlined.SwapVert
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -81,10 +79,14 @@ import androidx.compose.ui.unit.dp
 import com.example.data.model.FavoriteItem
 import com.example.data.model.Property
 import com.example.data.model.PropertyFilter
+import com.example.ui.components.EmptyState
 import com.example.ui.components.PropertyCard
-import com.example.ui.theme.YvyForestDeep
-import com.example.ui.theme.YvyForestPrimary
-import com.example.ui.theme.YvyGoldAccent
+import com.example.ui.components.YvyButton
+import com.example.ui.components.YvyButtonVariant
+import com.example.ui.components.YvyChip
+import com.example.ui.theme.YvyMotion
+import com.example.ui.theme.YvyShapes
+import com.example.ui.theme.YvySpacing
 import com.example.ui.util.ParaguayLocations
 
 private val OPERATION_OPTIONS = listOf(
@@ -115,6 +117,7 @@ fun ExploreScreen(
     visibleCount: Int,
     autoOpenFilter1: Boolean = false,
     onConsumeAutoOpenFilter1: () -> Unit = {},
+    isStaffAgent: (String) -> Boolean = { false },
     onUpdateFilter: ((PropertyFilter) -> PropertyFilter) -> Unit,
     onResetFilters: () -> Unit,
     @Suppress("UNUSED_PARAMETER") onToggleViewMode: () -> Unit = {},
@@ -124,7 +127,6 @@ fun ExploreScreen(
 ) {
     var showFilter1Dropdown by remember { mutableStateOf(false) }
 
-    // Draft state inside Filter 1 panel
     var draftDepartment by remember(filter.department) { mutableStateOf(filter.department) }
     var draftCity by remember(filter.city) { mutableStateOf(filter.city) }
     var draftOperation by remember(filter.operationType) { mutableStateOf(filter.operationType) }
@@ -140,7 +142,6 @@ fun ExploreScreen(
     val favoriteIds = favorites.map { it.propertyId }.toSet()
     val visibleItems = filteredProperties.take(visibleCount)
 
-    // Count active criteria in Filter 1
     val activeFilter1Count = remember(filter) {
         var count = 0
         if (filter.department != "Todos") count++
@@ -154,7 +155,6 @@ fun ExploreScreen(
         filteredProperties.map { it.currency.uppercase().trim() }.distinct().size > 1
     }
 
-    // Dynamic cities present in Firestore catalog for the selected draftDepartment
     val dynamicCitiesForDraftDept = remember(allCatalogProperties, draftDepartment) {
         allCatalogProperties
             .filter {
@@ -172,22 +172,23 @@ fun ExploreScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .testTag("explore_screen")
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Compact Header: Search Bar + Single Filter Button (Filtro 1) + Price Sorting Bar + Result Count
+            // Flat Header: Search Bar + Filter Button + Compact Sort Dropdown + Result Count
             Surface(
-                tonalElevation = 2.dp,
-                shadowElevation = 2.dp,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp,
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(horizontal = YvySpacing.ScreenHorizontal, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Row 1: Compact Search Bar + Filter 1 (Second filter removed per Requirement #7)
+                    // Row 1: Search Bar (10.dp radius) + Filter Button (10.dp radius)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -196,13 +197,10 @@ fun ExploreScreen(
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                            border = BorderStroke(
-                                width = 1.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-                            )
+                                .height(46.dp),
+                            shape = YvyShapes.FieldAndButton,
+                            color = MaterialTheme.colorScheme.background,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -211,9 +209,9 @@ fun ExploreScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Search,
+                                    imageVector = Icons.Outlined.Search,
                                     contentDescription = "Buscar",
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -224,7 +222,7 @@ fun ExploreScreen(
                                     if (filter.searchQuery.isEmpty()) {
                                         Text(
                                             text = "Busca tu próxima propiedad...",
-                                            style = MaterialTheme.typography.bodySmall,
+                                            style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
@@ -251,7 +249,7 @@ fun ExploreScreen(
                                         modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Clear,
+                                            imageVector = Icons.Outlined.Clear,
                                             contentDescription = "Limpiar texto",
                                             modifier = Modifier.size(16.dp)
                                         )
@@ -260,11 +258,12 @@ fun ExploreScreen(
                             }
                         }
 
-                        // BOTÓN DE FILTRO PRINCIPAL: Ubicación, Operación y Tipo de Propiedad
+                        // Filter trigger button
+                        val isFilterActive = showFilter1Dropdown || activeFilter1Count > 0
                         Surface(
                             modifier = Modifier
-                                .height(44.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .height(46.dp)
+                                .clip(YvyShapes.FieldAndButton)
                                 .clickable {
                                     draftDepartment = filter.department
                                     draftCity = filter.city
@@ -273,18 +272,18 @@ fun ExploreScreen(
                                     showFilter1Dropdown = !showFilter1Dropdown
                                 }
                                 .testTag("toggle_advanced_filters_btn"),
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (showFilter1Dropdown || activeFilter1Count > 0) {
-                                YvyForestPrimary
+                            shape = YvyShapes.FieldAndButton,
+                            color = if (isFilterActive) {
+                                MaterialTheme.colorScheme.primary
                             } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+                                MaterialTheme.colorScheme.surface
                             },
                             border = BorderStroke(
                                 width = 1.dp,
-                                color = if (showFilter1Dropdown || activeFilter1Count > 0) {
-                                    YvyForestPrimary
+                                color = if (isFilterActive) {
+                                    MaterialTheme.colorScheme.primary
                                 } else {
-                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                                    MaterialTheme.colorScheme.outline
                                 }
                             )
                         ) {
@@ -296,10 +295,10 @@ fun ExploreScreen(
                                 horizontalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Tune,
+                                    imageVector = Icons.Outlined.Tune,
                                     contentDescription = "Filtro: Ubicación, Operación y Tipo",
-                                    tint = if (showFilter1Dropdown || activeFilter1Count > 0) {
-                                        Color.White
+                                    tint = if (isFilterActive) {
+                                        MaterialTheme.colorScheme.onPrimary
                                     } else {
                                         MaterialTheme.colorScheme.onSurface
                                     },
@@ -308,34 +307,34 @@ fun ExploreScreen(
                                 Text(
                                     text = "Filtrar",
                                     style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (showFilter1Dropdown || activeFilter1Count > 0) {
-                                        Color.White
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isFilterActive) {
+                                        MaterialTheme.colorScheme.onPrimary
                                     } else {
                                         MaterialTheme.colorScheme.onSurface
                                     }
                                 )
                                 if (activeFilter1Count > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(18.dp)
-                                            .clip(CircleShape)
-                                            .background(YvyGoldAccent),
-                                        contentAlignment = Alignment.Center
+                                    Surface(
+                                        modifier = Modifier.size(18.dp),
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.secondary
                                     ) {
-                                        Text(
-                                            text = activeFilter1Count.toString(),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = YvyForestDeep
-                                        )
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = activeFilter1Count.toString(),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSecondary
+                                            )
+                                        }
                                     }
                                 }
                                 Icon(
-                                    imageVector = if (showFilter1Dropdown) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    imageVector = if (showFilter1Dropdown) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
                                     contentDescription = null,
-                                    tint = if (showFilter1Dropdown || activeFilter1Count > 0) {
-                                        Color.White
+                                    tint = if (isFilterActive) {
+                                        MaterialTheme.colorScheme.onPrimary
                                     } else {
                                         MaterialTheme.colorScheme.onSurfaceVariant
                                     },
@@ -345,162 +344,174 @@ fun ExploreScreen(
                         }
                     }
 
-                    // Row 2: Price Sorting Selector (Below search & filters, Above "Nro. Propiedades disponibles")
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SwapVert,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Text(
-                                text = "Ordenar:",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        val isAsc = filter.sortOrder == "PRICE_ASC"
-                        val isDesc = filter.sortOrder == "PRICE_DESC"
-
-                        Surface(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    val nextOrder = if (isAsc) "NONE" else "PRICE_ASC"
-                                    onUpdateFilter { it.copy(sortOrder = nextOrder) }
-                                }
-                                .testTag("sort_price_asc_chip"),
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (isAsc) YvyForestPrimary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                            border = BorderStroke(
-                                width = 1.dp,
-                                color = if (isAsc) YvyForestPrimary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ArrowUpward,
-                                    contentDescription = null,
-                                    tint = if (isAsc) YvyGoldAccent else MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Text(
-                                    text = "Precio: menor a mayor",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = if (isAsc) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isAsc) Color.White else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-
-                        Surface(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    val nextOrder = if (isDesc) "NONE" else "PRICE_DESC"
-                                    onUpdateFilter { it.copy(sortOrder = nextOrder) }
-                                }
-                                .testTag("sort_price_desc_chip"),
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (isDesc) YvyForestPrimary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                            border = BorderStroke(
-                                width = 1.dp,
-                                color = if (isDesc) YvyForestPrimary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDownward,
-                                    contentDescription = null,
-                                    tint = if (isDesc) YvyGoldAccent else MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Text(
-                                    text = "Precio: mayor a menor",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = if (isDesc) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isDesc) Color.White else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
+                    // Row 2: Compact Price Sorting Dropdown + Result Count
+                    var showSortMenu by remember { mutableStateOf(false) }
+                    val sortLabel = when (filter.sortOrder) {
+                        "PRICE_ASC" -> "Ordenar: Precio: menor a mayor ▾"
+                        "PRICE_DESC" -> "Ordenar: Precio: mayor a menor ▾"
+                        else -> "Ordenar: Relevancia ▾"
                     }
+                    val hasCustomSort = filter.sortOrder == "PRICE_ASC" || filter.sortOrder == "PRICE_DESC"
 
-                    // Row 3: Result Count ("Nro. Propiedades disponibles") + Clear Filters
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
                                 text = "${filteredProperties.size} propiedades disponibles",
                                 style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             if (filter.sortOrder != "NONE" && hasMultipleCurrenciesInResults) {
                                 Text(
-                                    text = "Agrupadas por moneda original (₲ PYG • $ USD)",
+                                    text = "Agrupadas por moneda original (₲ PYG · $ USD)",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
 
-                        if (activeFilter1Count > 0 || filter.searchQuery.isNotBlank() || filter.sortOrder != "NONE") {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Box {
+                            Surface(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        draftDepartment = "Todos"
-                                        draftCity = "Todas"
-                                        draftOperation = "ALL"
-                                        draftPropertyType = "ALL"
-                                        onResetFilters()
-                                    }
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    .testTag("reset_filters_btn")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.RestartAlt,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
+                                    .clip(YvyShapes.Chip)
+                                    .clickable { showSortMenu = true }
+                                    .testTag("sort_dropdown_trigger"),
+                                shape = YvyShapes.Chip,
+                                color = if (hasCustomSort) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    width = 1.dp,
+                                    color = if (hasCustomSort) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                                 )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = "Limpiar filtros",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.SwapVert,
+                                        contentDescription = null,
+                                        tint = if (hasCustomSort) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = sortLabel,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (hasCustomSort) FontWeight.SemiBold else FontWeight.Medium,
+                                        color = if (hasCustomSort) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "Precio: menor a mayor",
+                                            fontWeight = if (filter.sortOrder == "PRICE_ASC") FontWeight.SemiBold else FontWeight.Normal,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Outlined.ArrowUpward,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    trailingIcon = if (filter.sortOrder == "PRICE_ASC") {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    } else null,
+                                    onClick = {
+                                        onUpdateFilter { it.copy(sortOrder = "PRICE_ASC") }
+                                        showSortMenu = false
+                                    },
+                                    modifier = Modifier.testTag("sort_price_asc_chip")
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "Precio: mayor a menor",
+                                            fontWeight = if (filter.sortOrder == "PRICE_DESC") FontWeight.SemiBold else FontWeight.Normal,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Outlined.ArrowDownward,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    trailingIcon = if (filter.sortOrder == "PRICE_DESC") {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    } else null,
+                                    onClick = {
+                                        onUpdateFilter { it.copy(sortOrder = "PRICE_DESC") }
+                                        showSortMenu = false
+                                    },
+                                    modifier = Modifier.testTag("sort_price_desc_chip")
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "Restablecer",
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Outlined.RestartAlt,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        onUpdateFilter { it.copy(sortOrder = "NONE") }
+                                        showSortMenu = false
+                                    },
+                                    modifier = Modifier.testTag("sort_reset_option")
                                 )
                             }
                         }
                     }
 
-                    // Active Filter Pills Row
-                    if (activeFilter1Count > 0) {
+                    // Active Filter Pills + Clear Filters link
+                    if (activeFilter1Count > 0 || filter.searchQuery.isNotBlank() || filter.sortOrder != "NONE") {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -544,44 +555,66 @@ fun ExploreScreen(
                                     }
                                 )
                             }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(YvyShapes.Chip)
+                                    .clickable {
+                                        draftDepartment = "Todos"
+                                        draftCity = "Todas"
+                                        draftOperation = "ALL"
+                                        draftPropertyType = "ALL"
+                                        onResetFilters()
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .testTag("reset_filters_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.RestartAlt,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Limpiar filtros",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
                 }
             }
+            HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
 
-            // Results Grid (Uniform fixed-size cards)
+            // Results Grid / List
             if (filteredProperties.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(28.dp),
+                        .padding(YvySpacing.ScreenHorizontal),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = "No encontramos propiedades con esos criterios",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Prueba seleccionando otro departamento, ciudad, operación o tipo de propiedad.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Button(onClick = onResetFilters) {
-                            Text("Restablecer filtros")
-                        }
-                    }
+                    EmptyState(
+                        title = "No encontramos propiedades con esos criterios",
+                        description = "Prueba seleccionando otro departamento, ciudad, operación o tipo de propiedad.",
+                        icon = Icons.Outlined.SearchOff,
+                        actionLabel = "Restablecer filtros",
+                        onActionClick = onResetFilters
+                    )
                 }
             } else if (!isGridView) {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 156.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(
+                        horizontal = YvySpacing.ScreenHorizontal,
+                        vertical = 14.dp
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(visibleItems, key = { "grid_${it.id}" }) { prop ->
@@ -589,6 +622,7 @@ fun ExploreScreen(
                             property = prop,
                             displayCurrency = prop.currency,
                             isFavorite = favoriteIds.contains(prop.id),
+                            isStaff = isStaffAgent(prop.agentId),
                             onCardClick = { onPropertyClick(prop) },
                             onFavoriteClick = { onToggleFavorite(prop) },
                             compact = true
@@ -603,20 +637,23 @@ fun ExploreScreen(
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                OutlinedButton(
+                                YvyButton(
+                                    text = "Cargar más (${filteredProperties.size - visibleCount} restantes)",
                                     onClick = onLoadMore,
-                                    modifier = Modifier.testTag("load_more_btn")
-                                ) {
-                                    Text("Cargar más (${filteredProperties.size - visibleCount} restantes)")
-                                }
+                                    variant = YvyButtonVariant.SECONDARY_OUTLINED,
+                                    testTag = "load_more_btn"
+                                )
                             }
                         }
                     }
                 }
             } else {
                 LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(
+                        horizontal = YvySpacing.ScreenHorizontal,
+                        vertical = 14.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(visibleItems, key = { "list_${it.id}" }) { prop ->
@@ -624,6 +661,7 @@ fun ExploreScreen(
                             property = prop,
                             displayCurrency = prop.currency,
                             isFavorite = favoriteIds.contains(prop.id),
+                            isStaff = isStaffAgent(prop.agentId),
                             onCardClick = { onPropertyClick(prop) },
                             onFavoriteClick = { onToggleFavorite(prop) },
                             compact = false
@@ -638,12 +676,12 @@ fun ExploreScreen(
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                OutlinedButton(
+                                YvyButton(
+                                    text = "Cargar más (${filteredProperties.size - visibleCount} restantes)",
                                     onClick = onLoadMore,
-                                    modifier = Modifier.testTag("load_more_btn")
-                                ) {
-                                    Text("Cargar más (${filteredProperties.size - visibleCount} restantes)")
-                                }
+                                    variant = YvyButtonVariant.SECONDARY_OUTLINED,
+                                    testTag = "load_more_btn"
+                                )
                             }
                         }
                     }
@@ -661,33 +699,31 @@ fun ExploreScreen(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = {
-                            showFilter1Dropdown = false
-                        }
+                        onClick = { showFilter1Dropdown = false }
                     )
             )
         }
 
-        // ANCHORED DROPDOWN / EXTENSION PANEL FOR FILTER 1
+        // ANCHORED DROPDOWN / EXTENSION PANEL FOR FILTER 1 (subtle 200ms motion, 12.dp card, 1.dp border)
         AnimatedVisibility(
             visible = showFilter1Dropdown,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically(),
+            enter = fadeIn(tween(YvyMotion.DurationMedium)) + expandVertically(tween(YvyMotion.DurationMedium)),
+            exit = fadeOut(tween(YvyMotion.DurationFast)) + shrinkVertically(tween(YvyMotion.DurationFast)),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 68.dp, start = 14.dp, end = 14.dp)
+                .padding(top = 68.dp, start = YvySpacing.ScreenHorizontal, end = YvySpacing.ScreenHorizontal)
         ) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 430.dp)
+                    .heightIn(max = 440.dp)
                     .testTag("explore_filter_1_panel"),
-                shape = RoundedCornerShape(20.dp),
+                shape = YvyShapes.Card,
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -699,16 +735,17 @@ fun ExploreScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.LocationOn,
+                                imageVector = Icons.Outlined.LocationOn,
                                 contentDescription = null,
-                                tint = YvyForestPrimary,
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Ubicación, Operación y Tipo",
+                                text = "Ubicación, operación y tipo",
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                         }
                         IconButton(
@@ -716,14 +753,14 @@ fun ExploreScreen(
                             modifier = Modifier.size(28.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Close,
+                                imageVector = Icons.Outlined.Close,
                                 contentDescription = "Cerrar panel de filtros",
                                 modifier = Modifier.size(18.dp)
                             )
                         }
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
 
                     Column(
                         modifier = Modifier
@@ -732,13 +769,13 @@ fun ExploreScreen(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        // 1. Operación Inmobiliaria
+                        // 1. Operación inmobiliaria
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = "1. Operación Inmobiliaria",
+                                text = "1. Operación inmobiliaria",
                                 style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -746,50 +783,25 @@ fun ExploreScreen(
                             ) {
                                 OPERATION_OPTIONS.forEach { (code, label) ->
                                     val selected = draftOperation == code
-                                    FilterChip(
+                                    YvyChip(
+                                        label = label,
                                         selected = selected,
                                         onClick = {
                                             draftOperation = code
                                             onUpdateFilter { it.copy(operationType = code) }
-                                        },
-                                        label = {
-                                            Text(
-                                                text = label,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                        },
-                                        leadingIcon = if (selected) {
-                                            {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(15.dp)
-                                                )
-                                            }
-                                        } else null,
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = YvyForestPrimary,
-                                            selectedLabelColor = Color.White,
-                                            selectedLeadingIconColor = YvyGoldAccent
-                                        )
+                                        }
                                     )
                                 }
                             }
                         }
 
-                        // 2. Ubicación en Paraguay — Departamento o Capital
+                        // 2. Departamento o Capital (Paraguay)
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = "2. Departamento o Capital (Paraguay)",
+                                text = "2. Departamento o Capital",
                                 style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "Selecciona Asunción o cualquiera de los 17 departamentos:",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -797,7 +809,8 @@ fun ExploreScreen(
                             ) {
                                 ParaguayLocations.departmentsWithAll.forEach { dept ->
                                     val selected = draftDepartment.equals(dept, ignoreCase = true)
-                                    FilterChip(
+                                    YvyChip(
+                                        label = dept,
                                         selected = selected,
                                         onClick = {
                                             draftDepartment = dept
@@ -805,34 +818,23 @@ fun ExploreScreen(
                                             onUpdateFilter {
                                                 it.copy(department = dept, city = "Todas")
                                             }
-                                        },
-                                        label = {
-                                            Text(
-                                                text = dept,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                        },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = YvyForestPrimary,
-                                            selectedLabelColor = Color.White
-                                        )
+                                        }
                                     )
                                 }
                             }
                         }
 
-                        // 3. Ciudad / Distrito
+                        // 3. Ciudad o Distrito
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
                                 text = if (draftDepartment == "Todos") {
-                                    "3. Ciudad o Distrito (Principales de Paraguay)"
+                                    "3. Ciudad o distrito"
                                 } else {
-                                    "3. Ciudad o Distrito en $draftDepartment"
+                                    "3. Ciudad o distrito en $draftDepartment"
                                 },
                                 style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -840,35 +842,25 @@ fun ExploreScreen(
                             ) {
                                 availableCities.forEach { cityOption ->
                                     val selected = draftCity.equals(cityOption, ignoreCase = true)
-                                    FilterChip(
+                                    YvyChip(
+                                        label = cityOption,
                                         selected = selected,
                                         onClick = {
                                             draftCity = cityOption
                                             onUpdateFilter { it.copy(city = cityOption) }
-                                        },
-                                        label = {
-                                            Text(
-                                                text = cityOption,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                        },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = YvyGoldAccent,
-                                            selectedLabelColor = YvyForestDeep
-                                        )
+                                        }
                                     )
                                 }
                             }
                         }
 
-                        // 4. Tipo de Propiedad
+                        // 4. Tipo de propiedad
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = "4. Tipo de Propiedad",
+                                text = "4. Tipo de propiedad",
                                 style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -876,30 +868,20 @@ fun ExploreScreen(
                             ) {
                                 PROPERTY_TYPES.forEach { (code, label) ->
                                     val selected = draftPropertyType == code
-                                    FilterChip(
+                                    YvyChip(
+                                        label = label,
                                         selected = selected,
                                         onClick = {
                                             draftPropertyType = code
                                             onUpdateFilter { it.copy(propertyType = code) }
-                                        },
-                                        label = {
-                                            Text(
-                                                text = label,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                        },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = YvyForestPrimary,
-                                            selectedLabelColor = Color.White
-                                        )
+                                        }
                                     )
                                 }
                             }
                         }
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                    HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
 
                     Row(
                         modifier = Modifier
@@ -908,19 +890,20 @@ fun ExploreScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedButton(
+                        YvyButton(
+                            text = "Restablecer",
                             onClick = {
                                 draftDepartment = "Todos"
                                 draftCity = "Todas"
                                 draftOperation = "ALL"
                                 draftPropertyType = "ALL"
                                 onResetFilters()
-                            }
-                        ) {
-                            Text("Restablecer")
-                        }
+                            },
+                            variant = YvyButtonVariant.SECONDARY_OUTLINED
+                        )
 
-                        Button(
+                        YvyButton(
+                            text = "Ver ${filteredProperties.size} resultados",
                             onClick = {
                                 onUpdateFilter {
                                     it.copy(
@@ -932,14 +915,9 @@ fun ExploreScreen(
                                 }
                                 showFilter1Dropdown = false
                             },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = YvyForestPrimary,
-                                contentColor = Color.White
-                            ),
-                            modifier = Modifier.testTag("apply_filter_1_btn")
-                        ) {
-                            Text("Ver ${filteredProperties.size} resultados", fontWeight = FontWeight.Bold)
-                        }
+                            variant = YvyButtonVariant.PRIMARY,
+                            testTag = "apply_filter_1_btn"
+                        )
                     }
                 }
             }
@@ -953,27 +931,27 @@ private fun ActiveCriteriaPill(
     onClear: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = YvyForestPrimary.copy(alpha = 0.12f),
-        border = BorderStroke(1.dp, YvyForestPrimary.copy(alpha = 0.3f))
+        shape = YvyShapes.Chip,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
             modifier = Modifier
                 .clickable(onClick = onClear)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 10.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Medium
             )
             Icon(
-                imageVector = Icons.Default.Close,
+                imageVector = Icons.Outlined.Close,
                 contentDescription = "Quitar filtro $label",
-                tint = MaterialTheme.colorScheme.primary,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(12.dp)
             )
         }

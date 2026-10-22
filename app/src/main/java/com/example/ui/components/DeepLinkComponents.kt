@@ -333,8 +333,10 @@ fun PublicWebFallbackPreviewDialog(
                 )
 
                 Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = YvyForestDeep),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
@@ -342,48 +344,51 @@ fun PublicWebFallbackPreviewDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "YVY CAPITAL PARAGUAY • WEB PREVIEW",
+                            text = "Yvy Capital Paraguay • Vista previa web",
                             style = MaterialTheme.typography.labelSmall,
-                            color = YvyGoldAccent,
-                            fontWeight = FontWeight.Bold
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
                         )
                         Text(
                             text = property.title,
                             style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             text = "${property.neighborhood}, ${property.city} • $priceText",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color.White.copy(alpha = 0.9f)
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontWeight = FontWeight.SemiBold
                         )
                         Text(
                             text = "${property.areaTotalM2} m² • ${property.bedrooms} dormitorios • ${property.bathrooms} baños",
                             style = MaterialTheme.typography.labelSmall,
-                            color = YvyGoldAccent
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Button(
                             onClick = onOpenDirectlyInApp,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = YvyGoldAccent,
-                                contentColor = YvyForestDeep
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
                             ),
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Abrir en Yvy Capital", fontWeight = FontWeight.Bold)
+                            Text("Abrir en Yvy Capital", fontWeight = FontWeight.SemiBold)
                         }
                         OutlinedButton(
                             onClick = {
                                 DeepLinkHandler.copyToClipboard(context, "Enlace Diferido Yvy Capital", httpsLink)
                                 onCopyDeferredLink(httpsLink)
                             },
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Guardar enlace para abrir tras instalar", color = Color.White)
+                            Text("Guardar enlace para abrir tras instalar", color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }

@@ -39,23 +39,79 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    function staffPath(uid) {
+      return /databases/$(database)/documents/staff/$(uid);
+    }
+
+    function isActiveStaffUid(uid) {
+      return exists(staffPath(uid)) && get(staffPath(uid)).data.get('active', false) == true;
+    }
+
+    function isActiveStaff() {
+      return isSignedIn() && isActiveStaffUid(request.auth.uid);
+    }
+
+    function isStaffAdmin() {
+      return isActiveStaff() && get(staffPath(request.auth.uid)).data.get('role', '') == 'admin';
+    }
+
+    function isPlatformAdmin() {
+      return isAdmin() || isStaffAdmin();
+    }
+    function membershipPath(uid) {
+      return /databases/$(database)/documents/memberships/$(uid);
+    }
+    function counterPath(uid) {
+      return /databases/$(database)/documents/listingCounters/$(uid);
+    }
+    function propertyPath(id) {
+      return /databases/$(database)/documents/properties/$(id);
+    }
+    function hasActivePlan(uid, tiers) {
+      return exists(membershipPath(uid))
+        && get(membershipPath(uid)).data.get('status', '') == 'active'
+        && get(membershipPath(uid)).data.get('planTier', 'FREE') in tiers
+        && (get(membershipPath(uid)).data.get('expiresAt', null) == null
+            || get(membershipPath(uid)).data.expiresAt > request.time);
+    }
+    function listingLimitOk(uid, newCount, data) {
+      return ((isActiveStaff() || hasActivePlan(uid, ['PLAN_INTERMEDIO', 'PLAN_SENIOR'])) && newCount <= 10)
+        || (hasActivePlan(uid, ['PLAN_INICIAL']) && newCount <= 5 && data.featured == false);
+    }
+    function wasActiveListing(id) {
+      return exists(propertyPath(id)) && get(propertyPath(id)).data.status == 'active';
+    }
+    function willBeActiveListing(id) {
+      return existsAfter(propertyPath(id)) && getAfter(propertyPath(id)).data.status == 'active';
+    }
+    function counterIncrementedFor(uid, propertyId) {
+      return getAfter(counterPath(uid)).data.lastPropertyId == propertyId && (
+        (!exists(counterPath(uid)) && getAfter(counterPath(uid)).data.count == 1) ||
+        (exists(counterPath(uid)) && getAfter(counterPath(uid)).data.count == get(counterPath(uid)).data.count + 1)
+      );
+    }
+    function counterDecrementedFor(uid, propertyId) {
+      return exists(counterPath(uid))
+        && getAfter(counterPath(uid)).data.lastPropertyId == propertyId
+        && getAfter(counterPath(uid)).data.count == get(counterPath(uid)).data.count - 1;
+    }
+
     // Valida en el backend el plan y límite de publicaciones activas del asesor
     function canAdvisorPublishProperty(propertyId, data) {
-      return propertyId.matches('^(demo-|py_).*') ||
-             !userProfileExists() || (
-               (getUserProfile().planTier == 'PLAN_INICIAL' &&
-                getUserProfile().get('activeListingsCount', 0) < 5 &&
-                data.featured == false) ||
-               ((getUserProfile().planTier == 'PLAN_INTERMEDIO' || getUserProfile().planTier == 'PLAN_SENIOR') &&
-                getUserProfile().get('activeListingsCount', 0) < 10)
-             );
+      return isPlatformAdmin() || (
+        data.verified == false && (
+          (data.status == 'active'
+            && counterIncrementedFor(request.auth.uid, propertyId)
+            && listingLimitOk(request.auth.uid, getAfter(counterPath(request.auth.uid)).data.count, data))
+          ||
+          (data.status != 'active' && listingLimitOk(request.auth.uid, 0, data))
+        )
+      );
     }
 
     // Valida en el backend que el usuario tenga Membresía Senior activa
     function hasSeniorMembership() {
-      return isSignedIn() &&
-             userProfileExists() &&
-             getUserProfile().planTier == 'PLAN_SENIOR';
+      return isActiveStaff() || (isSignedIn() && hasActivePlan(request.auth.uid, ['PLAN_SENIOR']));
     }
 
     // 3. Entity Validation Blueprints
@@ -78,7 +134,7 @@ service cloud.firestore {
              (!('activeListingsCount' in data) || (data.activeListingsCount is int && data.activeListingsCount >= 0 && data.activeListingsCount <= 10)) &&
              (!('externalAgentMode' in data) || (
                data.externalAgentMode is bool &&
-               (!data.externalAgentMode || data.planTier == 'PLAN_INTERMEDIO' || data.planTier == 'PLAN_SENIOR')
+               (!data.externalAgentMode || isActiveStaff() || hasActivePlan(data.userId, ['PLAN_INTERMEDIO', 'PLAN_SENIOR']))
              )) &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
              data.updatedAt is timestamp && data.updatedAt <= request.time;
@@ -194,13 +250,13 @@ service cloud.firestore {
 
     // A. Perfiles de Usuarios (/users/{userId}) - Estricto aislamiento PII y validación de membresías
     match /users/{userId} {
-      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isPlatformAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isPlatformAdmin());
 
       allow create: if isSignedIn() &&
                        isValidId(userId) &&
                        request.auth.uid == userId &&
-                       (incoming().planTier == 'FREE' || incoming().planTier == 'PLAN_INICIAL' || incoming().planTier == 'PLAN_INTERMEDIO' || incoming().planTier == 'PLAN_SENIOR') &&
+                       incoming().planTier == 'FREE' && (!('activeListingsCount' in incoming()) || incoming().activeListingsCount == 0) &&
                        incoming().keys().hasAll(['userId', 'displayName', 'email', 'preferredCurrency', 'role', 'planTier', 'createdAt', 'updatedAt']) &&
                        incoming().keys().hasOnly(['userId', 'displayName', 'email', 'phone', 'preferredCurrency', 'role', 'agencyName', 'planTier', 'activeListingsCount', 'externalAgentMode', 'createdAt', 'updatedAt']) &&
                        isValidUserProfile(incoming());
@@ -208,18 +264,18 @@ service cloud.firestore {
       allow update: if isSignedIn() &&
                        isValidId(userId) &&
                        isValidUserProfile(incoming()) && (
-                         isAdmin() || (
+                         isPlatformAdmin() || (
                            request.auth.uid == userId &&
                            incoming().userId == existing().userId &&
                            incoming().createdAt == existing().createdAt &&
                            incoming().diff(existing()).affectedKeys().hasOnly([
                              'displayName', 'phone', 'preferredCurrency', 'role',
-                             'agencyName', 'planTier', 'activeListingsCount', 'externalAgentMode', 'updatedAt'
+                             'agencyName', 'externalAgentMode', 'updatedAt'
                            ])
                          )
                        );
 
-      allow delete: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow delete: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isPlatformAdmin());
 
       // B. Subcolección de Favoritos (/users/{userId}/favorites/{propertyId})
       match /favorites/{propertyId} {
@@ -254,13 +310,13 @@ service cloud.firestore {
       allow get: if isSignedIn() && isValidId(propertyId) && (
         resource.data.status == 'active' ||
         resource.data.agentId == request.auth.uid ||
-        isAdmin()
+        isPlatformAdmin()
       );
 
       allow list: if isSignedIn() && (
         resource.data.status == 'active' ||
         resource.data.agentId == request.auth.uid ||
-        isAdmin()
+        isPlatformAdmin()
       );
 
       allow create: if isSignedIn() &&
@@ -286,10 +342,20 @@ service cloud.firestore {
       allow update: if isSignedIn() &&
                        isValidId(propertyId) &&
                        isValidProperty(incoming()) && (
-                         isAdmin() || (
+                         isPlatformAdmin() || (
                            existing().agentId == request.auth.uid &&
                            incoming().agentId == existing().agentId &&
                            incoming().createdAt == existing().createdAt &&
+                           incoming().verified == existing().verified &&
+                           (incoming().featured == false || isActiveStaff() || hasActivePlan(request.auth.uid, ['PLAN_INTERMEDIO', 'PLAN_SENIOR'])) &&
+                           (
+                             ((existing().status == 'active') == (incoming().status == 'active'))
+                             || (existing().status != 'active' && incoming().status == 'active'
+                                 && counterIncrementedFor(request.auth.uid, propertyId)
+                                 && listingLimitOk(request.auth.uid, getAfter(counterPath(request.auth.uid)).data.count, incoming()))
+                             || (existing().status == 'active' && incoming().status != 'active'
+                                 && counterDecrementedFor(request.auth.uid, propertyId))
+                           ) &&
                            incoming().diff(existing()).affectedKeys().hasOnly([
                              'title', 'description', 'operationType', 'propertyType', 'price', 'currency',
                              'department', 'city', 'neighborhood', 'address', 'latitude', 'longitude',
@@ -307,7 +373,11 @@ service cloud.firestore {
                          )
                        );
 
-      allow delete: if isSignedIn() && isValidId(propertyId) && (existing().agentId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && isValidId(propertyId) && (
+        isPlatformAdmin() ||
+        (existing().agentId == request.auth.uid
+          && (existing().status != 'active' || counterDecrementedFor(request.auth.uid, propertyId)))
+      );
     }
 
     // D. Videos Promocionales de Propiedades (/property_videos/{videoId}) - EXCLUSIVO PLAN SENIOR
@@ -405,6 +475,85 @@ service cloud.firestore {
 
       allow update: if isSignedIn() && isValidId(reportId) && isValidPropertyReport(incoming()) && isAdmin();
       allow delete: if isSignedIn() && isValidId(reportId) && isAdmin();
+    }
+
+    // G. Personal Autorizado de Yvy Capital (/staff/{uid})
+    match /staff/{uid} {
+      allow get: if isSignedIn() && isValidId(uid) && (request.auth.uid == uid || isStaffAdmin() || isAdmin());
+      allow list: if isSignedIn() && (isStaffAdmin() || isAdmin());
+      allow create, update, delete: if false;
+    }
+
+    // H. Insignia Pública de Personal (/publicStaff/{uid})
+    match /publicStaff/{uid} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn() &&
+                               isValidId(uid) &&
+                               request.auth.uid == uid &&
+                               isActiveStaff() &&
+                               incoming().keys().hasAll(['uid', 'name', 'updatedAt']) &&
+                               incoming().keys().hasOnly(['uid', 'name', 'updatedAt']) &&
+                               incoming().uid == uid &&
+                               incoming().name == get(staffPath(uid)).data.name &&
+                               incoming().updatedAt == request.time;
+      allow delete: if isSignedIn() && isValidId(uid) && (request.auth.uid == uid || isStaffAdmin() || isAdmin());
+    }
+
+    // I. Membresías Asignadas (/memberships/{uid}) - Solo Administradores
+    match /memberships/{uid} {
+      allow get: if isSignedIn() && isValidId(uid);
+      allow list: if isPlatformAdmin();
+      allow create, update: if isPlatformAdmin() && isValidId(uid)
+        && incoming().keys().hasOnly(['planTier', 'status', 'expiresAt', 'assignedBy', 'updatedAt', 'note'])
+        && incoming().planTier in ['FREE', 'PLAN_INICIAL', 'PLAN_INTERMEDIO', 'PLAN_SENIOR', 'PRO_MONTHLY', 'PRO_ANNUAL']
+        && incoming().status in ['active', 'expired', 'cancelled']
+        && (incoming().expiresAt == null || incoming().expiresAt is timestamp)
+        && incoming().assignedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+      allow delete: if isPlatformAdmin();
+    }
+
+    // J. Contador de Publicaciones Activas (/listingCounters/{uid})
+    match /listingCounters/{uid} {
+      allow get: if isSignedIn() && isValidId(uid) && (request.auth.uid == uid || isPlatformAdmin());
+      allow list: if isPlatformAdmin();
+      allow create: if isSignedIn() && request.auth.uid == uid
+        && incoming().keys().hasOnly(['count', 'lastPropertyId'])
+        && incoming().count == 1
+        && !wasActiveListing(incoming().lastPropertyId)
+        && willBeActiveListing(incoming().lastPropertyId)
+        && getAfter(propertyPath(incoming().lastPropertyId)).data.agentId == uid;
+      allow update: if isSignedIn() && request.auth.uid == uid
+        && incoming().keys().hasOnly(['count', 'lastPropertyId'])
+        && (
+          (incoming().count == existing().count + 1
+            && !wasActiveListing(incoming().lastPropertyId)
+            && willBeActiveListing(incoming().lastPropertyId)
+            && getAfter(propertyPath(incoming().lastPropertyId)).data.agentId == uid)
+          ||
+          (incoming().count == existing().count - 1 && incoming().count >= 0
+            && wasActiveListing(incoming().lastPropertyId)
+            && !willBeActiveListing(incoming().lastPropertyId)
+            && get(propertyPath(incoming().lastPropertyId)).data.agentId == uid)
+        );
+      allow write: if isPlatformAdmin();
+    }
+
+    // K. Solicitudes de Planes (/membershipRequests/{requestId})
+    match /membershipRequests/{requestId} {
+      allow get, list: if isSignedIn() && (resource.data.userId == request.auth.uid || isPlatformAdmin());
+      allow create: if isSignedIn() && isValidId(requestId)
+        && incoming().keys().hasOnly(['userId', 'userEmail', 'userName', 'planTier', 'paymentMethod', 'paymentReference', 'status', 'createdAt'])
+        && incoming().userId == request.auth.uid
+        && incoming().planTier in ['PLAN_INICIAL', 'PLAN_INTERMEDIO', 'PLAN_SENIOR', 'PRO_MONTHLY', 'PRO_ANNUAL']
+        && incoming().paymentMethod is string && incoming().paymentMethod.size() <= 50
+        && incoming().paymentReference is string && incoming().paymentReference.size() >= 1 && incoming().paymentReference.size() <= 200
+        && incoming().status == 'PENDING'
+        && incoming().createdAt == request.time;
+      allow update: if isPlatformAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt'])
+        && incoming().status in ['APPROVED', 'REJECTED'];
+      allow delete: if false;
     }
   }
 }

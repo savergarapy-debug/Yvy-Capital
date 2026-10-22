@@ -11,6 +11,13 @@ import com.example.data.model.PropertyFilter
 import com.example.data.model.PropertyInquiry
 import com.example.data.model.PropertyPromoVideo
 import com.example.data.model.UserProfile
+import com.example.data.model.EffectivePlan
+import com.example.data.model.StaffUser
+import com.example.data.model.UserMembership
+import com.example.data.model.MembershipRequest
+import com.example.data.repository.MembershipsRepository
+import com.example.data.repository.PublicStaffRepository
+import com.example.data.repository.StaffRepository
 import com.example.data.repository.YvyRepository
 import com.example.ui.util.CurrencyFormatter
 import com.example.ui.util.DeepLinkHandler
@@ -24,6 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -49,8 +57,19 @@ sealed interface DeepLinkResolutionState {
 
 class YvyViewModel(
     private val repository: YvyRepository,
+    val staffRepository: StaffRepository? = null,
+    val publicStaffRepository: PublicStaffRepository? = null,
+    val membershipsRepository: MembershipsRepository? = null,
     val currentUserId: String
 ) : ViewModel() {
+
+    constructor(repository: YvyRepository, currentUserId: String) : this(
+        repository = repository,
+        staffRepository = null,
+        publicStaffRepository = null,
+        membershipsRepository = null,
+        currentUserId = currentUserId
+    )
 
     private val _filter = MutableStateFlow(PropertyFilter())
     val filter: StateFlow<PropertyFilter> = _filter.asStateFlow()
@@ -144,23 +163,87 @@ class YvyViewModel(
             initialValue = UiState.Loading
         )
 
-    // 3. Perfil del usuario
-    val userProfileState: StateFlow<UiState<UserProfile?>> = repository.observeUserProfile(currentUserId)
-        .map<UserProfile?, UiState<UserProfile?>> { profile ->
-            if (profile != null) {
-                _displayCurrency.value = profile.preferredCurrency
-            }
+    // Estado de personal interno activo (/staff/{uid})
+    val isActiveStaff: StateFlow<Boolean> = staffRepository?.isActiveStaff
+        ?: MutableStateFlow(false)
+
+    val staffRole: StateFlow<String?> = staffRepository?.staffRole
+        ?: MutableStateFlow(null)
+
+    val staffUser: StateFlow<StaffUser?> = staffRepository?.staffUser
+        ?: MutableStateFlow(null)
+
+    val publicStaffMap: StateFlow<Map<String, String>> = publicStaffRepository?.publicStaffMap
+        ?: MutableStateFlow(emptyMap())
+
+    // 3. Perfil del usuario (con fallback automático para cuentas de personal sin users/{uid})
+    val userProfileState: StateFlow<UiState<UserProfile?>> = combine(
+        repository.observeUserProfile(currentUserId),
+        staffRepository?.staffUser ?: MutableStateFlow<StaffUser?>(null)
+    ) { profile, staff ->
+        val state: UiState<UserProfile?> = if (profile != null) {
+            _displayCurrency.value = profile.preferredCurrency
             UiState.Success(profile)
+        } else if (staff != null) {
+            val fallbackProfile = UserProfile(
+                id = currentUserId,
+                userId = currentUserId,
+                displayName = staff.name,
+                email = staff.email,
+                role = "AGENT",
+                planTier = AdvisorMemberships.TIER_FREE
+            )
+            UiState.Success(fallbackProfile)
+        } else {
+            UiState.Success(null)
         }
+        state
+    }.catch { error ->
+        Log.w(TAG, "Error observing user profile", error)
+        emit(UiState.Error(error.localizedMessage ?: "Error al cargar el perfil."))
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = UiState.Loading
+    )
+
+    // Membresía activa del usuario en tiempo real desde memberships/{uid}
+    val userMembership: StateFlow<UserMembership?> = (membershipsRepository?.observeMembership(currentUserId)
+        ?: flowOf(null))
         .catch { error ->
-            Log.w(TAG, "Error observing user profile", error)
-            emit(UiState.Error(error.localizedMessage ?: "Error al cargar el perfil."))
+            Log.w(TAG, "Error observing user membership", error)
+            emit(null)
         }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            initialValue = UiState.Loading
+            initialValue = null
         )
+
+    // Solicitudes de membresía del usuario
+    val userMembershipRequests: StateFlow<List<MembershipRequest>> = (membershipsRepository?.observeMyMembershipRequests(currentUserId)
+        ?: flowOf(emptyList()))
+        .catch { error ->
+            Log.w(TAG, "Error observing membership requests", error)
+            emit(emptyList())
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            initialValue = emptyList()
+        )
+
+    // Plan efectivo único y centralizado para toda la aplicación
+    val effectivePlan: StateFlow<EffectivePlan> = combine(
+        isActiveStaff,
+        userMembership
+    ) { isStaff, membership ->
+        EffectivePlan.resolveEffectivePlan(isStaff, membership)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = EffectivePlan()
+    )
 
     // 4. Consultas enviadas por el cliente
     val userInquiriesState: StateFlow<UiState<List<PropertyInquiry>>> = repository.observeUserInquiries(currentUserId)
@@ -224,10 +307,13 @@ class YvyViewModel(
         viewModelScope.launch {
             val firebaseUser = Firebase.auth.currentUser
             if (firebaseUser != null) {
-                repository.ensureOrUpdateUserProfile(
-                    displayName = firebaseUser.displayName ?: "Cliente Yvy Capital",
-                    email = firebaseUser.email ?: "cliente@yvycapital.com.py"
-                )
+                // Si el usuario es personal activo, NUNCA escribimos planTier en users/{uid}
+                if (!isActiveStaff.value) {
+                    repository.ensureOrUpdateUserProfile(
+                        displayName = firebaseUser.displayName ?: "Cliente Yvy Capital",
+                        email = firebaseUser.email ?: "cliente@yvycapital.com.py"
+                    )
+                }
                 repository.seedParaguayCatalogIfEmpty()
             }
         }
@@ -366,34 +452,57 @@ class YvyViewModel(
         }
     }
 
-    fun activateAdvisorPlan(
+    fun submitMembershipRequest(
         planTier: String,
-        displayName: String,
-        phone: String,
-        agencyName: String,
-        externalAgentMode: Boolean,
+        paymentMethod: String,
+        paymentReference: String,
         onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
             _isBusy.value = true
-            val email = Firebase.auth.currentUser?.email ?: "asesor@yvycapital.com.py"
-            repository.activateAdvisorMembership(
-                planTier = planTier,
-                displayName = displayName,
-                email = email,
-                phone = phone,
-                agencyName = agencyName,
-                externalAgentMode = externalAgentMode
-            ).onSuccess {
-                _isBusy.value = false
-                val planLabel = AdvisorMemberships.displayNameForTier(planTier)
-                _actionMessage.value = "¡Membresía activada con éxito! Ahora cuentas con el $planLabel."
+            try {
+                val profile = (userProfileState.value as? UiState.Success)?.data
+                val email = profile?.email ?: Firebase.auth.currentUser?.email ?: "usuario@yvycapital.com.py"
+                val name = profile?.displayName ?: Firebase.auth.currentUser?.displayName ?: "Usuario Yvy Capital"
+
+                membershipsRepository?.createMembershipRequest(
+                    userId = currentUserId,
+                    userEmail = email,
+                    userName = name,
+                    planTier = planTier,
+                    paymentMethod = paymentMethod,
+                    paymentReference = paymentReference
+                )
+                _actionMessage.value = "Solicitud enviada. Un administrador de Yvy Capital la activará al confirmar el pago."
                 onSuccess()
-            }.onFailure { err ->
+            } catch (e: Exception) {
+                Log.e(TAG, "Error submitting membership request", e)
+                _actionMessage.value = e.localizedMessage ?: "Error al enviar la solicitud de membresía."
+            } finally {
                 _isBusy.value = false
-                _actionMessage.value = err.localizedMessage ?: "No se pudo activar el plan de asesor."
             }
         }
+    }
+
+    fun updatePropertyVerified(propertyId: String, verified: Boolean) {
+        viewModelScope.launch {
+            _isBusy.value = true
+            repository.updatePropertyVerified(propertyId, verified)
+                .onSuccess {
+                    _actionMessage.value = if (verified) "Propiedad marcada como verificada." else "Verificación removida."
+                }
+                .onFailure { err ->
+                    _actionMessage.value = err.localizedMessage ?: "No se pudo actualizar el estado de verificación."
+                }
+            _isBusy.value = false
+        }
+    }
+
+    fun getAgentMembershipTier(agentId: String): String? {
+        if (publicStaffRepository?.isPublicStaff(agentId) == true) {
+            return null
+        }
+        return membershipsRepository?.getAgentMembershipTier(agentId)
     }
 
     fun toggleExternalAgentMode(enabled: Boolean) {
@@ -468,8 +577,20 @@ class YvyViewModel(
     ) {
         viewModelScope.launch {
             _isBusy.value = true
-            val currentProfile = (userProfileState.value as? UiState.Success)?.data
-            val canFeature = AdvisorMemberships.canFeatureForTier(currentProfile?.planTier)
+            val currentPlan = effectivePlan.value
+            val canFeature = currentPlan.canFeatureListings
+            val staffName = staffUser.value?.name
+            val resolvedAgentName = if (currentPlan.isStaff && !staffName.isNullOrBlank()) {
+                staffName
+            } else {
+                agentName.trim().ifBlank { "Asesor Yvy Capital Pro" }
+            }
+            val resolvedAgency = if (currentPlan.isStaff) {
+                "Equipo Yvy Capital"
+            } else {
+                agentAgency.trim().ifBlank { "Yvy Capital Pro" }
+            }
+
             val newProperty = Property(
                 title = title.trim(),
                 description = description.trim(),
@@ -493,10 +614,10 @@ class YvyViewModel(
                 featured = featured && canFeature,
                 status = "active",
                 agentId = currentUserId,
-                agentName = agentName.trim().ifBlank { "Asesor Yvy Capital Pro" },
-                agentAgency = agentAgency.trim().ifBlank { "Yvy Capital Pro" },
+                agentName = resolvedAgentName,
+                agentAgency = resolvedAgency,
                 agentWhatsapp = agentWhatsapp.trim().ifBlank { "+595981000000" },
-                verified = true,
+                verified = false,
                 viewsCount = 0L
             )
             repository.createProperty(newProperty)
@@ -523,9 +644,9 @@ class YvyViewModel(
         onProgress: (String) -> Unit = {},
         onSuccess: (PropertyPromoVideo) -> Unit
     ) {
-        val currentProfile = (userProfileState.value as? UiState.Success)?.data
-        if (!AdvisorMemberships.isSeniorTier(currentProfile?.planTier)) {
-            _actionMessage.value = "El Generador de Videos Promocionales es exclusivo para asesores con Plan Senior (G. 249.000/mes)."
+        val currentPlan = effectivePlan.value
+        if (!currentPlan.canGenerateVideos) {
+            _actionMessage.value = "El Generador de Videos Promocionales es exclusivo para asesores con Plan Senior o personal de Yvy Capital."
             return
         }
 
@@ -543,10 +664,15 @@ class YvyViewModel(
                 displayCurrency = _displayCurrency.value,
                 onProgress = onProgress
             ).onSuccess { generatedVideo ->
-                repository.createPromoVideo(generatedVideo)
+                val videoToSend = if (currentPlan.isStaff) {
+                    generatedVideo.copy(planTierAtCreation = AdvisorMemberships.TIER_SENIOR)
+                } else {
+                    generatedVideo
+                }
+                repository.createPromoVideo(videoToSend)
                     .onSuccess { savedId ->
                         _isBusy.value = false
-                        val savedVideo = generatedVideo.copy(id = savedId)
+                        val savedVideo = videoToSend.copy(id = savedId)
                         _actionMessage.value = "Video promocional MP4 generado y guardado exitosamente."
                         onSuccess(savedVideo)
                     }
@@ -559,6 +685,10 @@ class YvyViewModel(
                 _actionMessage.value = err.localizedMessage ?: "No se pudo generar el video promocional."
             }
         }
+    }
+
+    fun isPublicStaff(uid: String): Boolean {
+        return publicStaffRepository?.isPublicStaff(uid) ?: false
     }
 
     fun deletePromoVideo(videoId: String) {

@@ -8,103 +8,161 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.example.R
 
-val PlayfairDisplayFamily = FontFamily(
-    Font(R.font.playfair_display, FontWeight.Normal),
-    Font(R.font.playfair_display, FontWeight.SemiBold),
-    Font(R.font.playfair_display, FontWeight.Bold)
+// ============================================================================
+// YVY CAPITAL — TIPOGRAFÍA EDITORIAL (FRAUNCES + MANROPE)
+// ============================================================================
+
+/**
+ * Serif editorial: reservada para el nombre de la marca, los títulos de pantalla
+ * y el precio en la ficha de propiedad.
+ */
+val YvyEditorialSerifFamily = FontFamily(
+    Font(R.font.fraunces, FontWeight.Normal),
+    Font(R.font.fraunces, FontWeight.SemiBold),
+    Font(R.font.fraunces, FontWeight.Bold)
 )
 
-val PlusJakartaSansFamily = FontFamily(
-    Font(R.font.plus_jakarta_sans, FontWeight.Normal),
-    Font(R.font.plus_jakarta_sans, FontWeight.Medium),
-    Font(R.font.plus_jakarta_sans, FontWeight.SemiBold),
-    Font(R.font.plus_jakarta_sans, FontWeight.Bold)
+/**
+ * Sans moderna y legible: usada en toda la interfaz, secciones, cuerpo, botones y metadatos.
+ */
+val YvySansFamily = FontFamily(
+    Font(R.font.manrope, FontWeight.Normal),
+    Font(R.font.manrope, FontWeight.Medium),
+    Font(R.font.manrope, FontWeight.SemiBold),
+    Font(R.font.manrope, FontWeight.Bold)
+)
+
+// Alias de compatibilidad
+val PlayfairDisplayFamily = YvyEditorialSerifFamily
+val PlusJakartaSansFamily = YvySansFamily
+
+/**
+ * Estilo específico para precios destacados con cifras tabulares ("tnum").
+ */
+val YvyPriceEditorialStyle = TextStyle(
+    fontFamily = YvyEditorialSerifFamily,
+    fontWeight = FontWeight.SemiBold,
+    fontSize = 26.sp,
+    lineHeight = 32.sp,
+    fontFeatureSettings = "tnum"
+)
+
+val YvyPriceCardStyle = TextStyle(
+    fontFamily = YvySansFamily,
+    fontWeight = FontWeight.Bold,
+    fontSize = 16.sp,
+    lineHeight = 22.sp,
+    fontFeatureSettings = "tnum"
+)
+
+val YvyPriceCompactCardStyle = TextStyle(
+    fontFamily = YvySansFamily,
+    fontWeight = FontWeight.Bold,
+    fontSize = 14.sp,
+    lineHeight = 19.sp,
+    fontFeatureSettings = "tnum"
 )
 
 val Typography = Typography(
+    // Marca y titulares mayores (26–28 sp, Fraunces)
     displayLarge = TextStyle(
-        fontFamily = PlayfairDisplayFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = 36.sp,
-        lineHeight = 44.sp,
-        letterSpacing = (-0.5).sp
+        fontFamily = YvyEditorialSerifFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 28.sp,
+        lineHeight = 34.sp,
+        letterSpacing = (-0.3).sp
     ),
     displayMedium = TextStyle(
-        fontFamily = PlayfairDisplayFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = 30.sp,
-        lineHeight = 38.sp
-    ),
-    headlineLarge = TextStyle(
-        fontFamily = PlayfairDisplayFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = 26.sp,
-        lineHeight = 34.sp
-    ),
-    headlineMedium = TextStyle(
-        fontFamily = PlayfairDisplayFamily,
+        fontFamily = YvyEditorialSerifFamily,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 22.sp,
-        lineHeight = 28.sp
+        fontSize = 27.sp,
+        lineHeight = 33.sp,
+        letterSpacing = (-0.2).sp
     ),
+    // Título de pantalla (26–28 sp, Fraunces)
+    headlineLarge = TextStyle(
+        fontFamily = YvyEditorialSerifFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 27.sp,
+        lineHeight = 33.sp,
+        letterSpacing = (-0.2).sp
+    ),
+    // Precio en ficha / título editorial secundario (Fraunces + cifras tabulares)
+    headlineMedium = TextStyle(
+        fontFamily = YvyEditorialSerifFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 26.sp,
+        lineHeight = 32.sp,
+        fontFeatureSettings = "tnum"
+    ),
+    // Títulos de sección (18 sp, Manrope)
     headlineSmall = TextStyle(
-        fontFamily = PlusJakartaSansFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = 19.sp,
-        lineHeight = 26.sp
-    ),
-    titleLarge = TextStyle(
-        fontFamily = PlusJakartaSansFamily,
-        fontWeight = FontWeight.Bold,
+        fontFamily = YvySansFamily,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 18.sp,
         lineHeight = 24.sp
     ),
-    titleMedium = TextStyle(
-        fontFamily = PlusJakartaSansFamily,
+    titleLarge = TextStyle(
+        fontFamily = YvySansFamily,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 16.sp,
-        lineHeight = 22.sp
-    ),
-    titleSmall = TextStyle(
-        fontFamily = PlusJakartaSansFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 14.sp,
-        lineHeight = 20.sp
-    ),
-    bodyLarge = TextStyle(
-        fontFamily = PlusJakartaSansFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
+        fontSize = 18.sp,
         lineHeight = 24.sp
     ),
-    bodyMedium = TextStyle(
-        fontFamily = PlusJakartaSansFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-        lineHeight = 20.sp
+    // Subtítulos y títulos de tarjeta (15–16 sp, Manrope)
+    titleMedium = TextStyle(
+        fontFamily = YvySansFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 15.sp,
+        lineHeight = 21.sp,
+        fontFeatureSettings = "tnum"
     ),
-    bodySmall = TextStyle(
-        fontFamily = PlusJakartaSansFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 12.sp,
-        lineHeight = 16.sp
-    ),
-    labelLarge = TextStyle(
-        fontFamily = PlusJakartaSansFamily,
+    titleSmall = TextStyle(
+        fontFamily = YvySansFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 14.sp,
+        lineHeight = 20.sp,
+        fontFeatureSettings = "tnum"
+    ),
+    // Cuerpo (14–15 sp, Manrope)
+    bodyLarge = TextStyle(
+        fontFamily = YvySansFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 15.sp,
+        lineHeight = 22.sp
+    ),
+    bodyMedium = TextStyle(
+        fontFamily = YvySansFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 14.sp,
         lineHeight = 20.sp
     ),
+    // Metadatos (12 sp, Manrope)
+    bodySmall = TextStyle(
+        fontFamily = YvySansFamily,
+        fontWeight = FontWeight.Normal,
+        fontSize = 12.sp,
+        lineHeight = 17.sp,
+        fontFeatureSettings = "tnum"
+    ),
+    labelLarge = TextStyle(
+        fontFamily = YvySansFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        fontFeatureSettings = "tnum"
+    ),
     labelMedium = TextStyle(
-        fontFamily = PlusJakartaSansFamily,
+        fontFamily = YvySansFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
-        lineHeight = 16.sp
+        lineHeight = 16.sp,
+        fontFeatureSettings = "tnum"
     ),
     labelSmall = TextStyle(
-        fontFamily = PlusJakartaSansFamily,
+        fontFamily = YvySansFamily,
         fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 14.sp
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        fontFeatureSettings = "tnum"
     )
 )

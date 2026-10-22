@@ -51,6 +51,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -72,6 +73,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.BorderStroke
 import com.example.data.model.AdvisorMembershipSpec
 import com.example.data.model.AdvisorMemberships
 import com.example.data.model.Property
@@ -81,6 +83,9 @@ import com.example.ui.theme.YvyForestDeep
 import com.example.ui.theme.YvyForestMedium
 import com.example.ui.theme.YvyForestPrimary
 import com.example.ui.theme.YvyGoldAccent
+import com.example.ui.theme.YvyPriceCardStyle
+import com.example.ui.theme.YvyProGold
+import com.example.ui.theme.YvyShapes
 import com.example.ui.util.CurrencyFormatter
 import com.example.ui.util.PromoVideoGenerator
 import kotlinx.coroutines.delay
@@ -89,14 +94,15 @@ import kotlinx.coroutines.delay
  * Ventana compacta, clara y visualmente atractiva que presenta los 3 planes de membresía
  * para asesores inmobiliarios al pulsar "Conviértete en Asesor".
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AdvisorMembershipPlansDialog(
     currentProfile: UserProfile?,
     isBusy: Boolean,
-    onSelectAndActivatePlan: (
+    onRequestPlan: (
         planTier: String,
-        agencyName: String,
-        externalAgentMode: Boolean
+        paymentMethod: String,
+        paymentReference: String
     ) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -114,12 +120,10 @@ fun AdvisorMembershipPlansDialog(
     }
 
     var selectedPlanCode by remember { mutableStateOf(initialTier) }
-    var agencyName by remember(currentProfile?.agencyName) {
-        mutableStateOf(currentProfile?.agencyName?.ifBlank { "Yvy Capital Asesores" } ?: "Yvy Capital Asesores")
-    }
-    var externalAgentMode by remember(currentProfile?.externalAgentMode) {
-        mutableStateOf(currentProfile?.externalAgentMode ?: false)
-    }
+    val paymentMethods = listOf("Transferencia bancaria", "Billetera electrónica", "Pago en oficina")
+    var selectedPaymentMethod by remember { mutableStateOf(paymentMethods.first()) }
+    var paymentReference by remember { mutableStateOf("") }
+    var referenceError by remember { mutableStateOf(false) }
 
     val selectedSpec: AdvisorMembershipSpec = remember(selectedPlanCode) {
         AdvisorMemberships.getSpec(selectedPlanCode) ?: AdvisorMemberships.ALL_PLANS.last()
@@ -138,12 +142,12 @@ fun AdvisorMembershipPlansDialog(
         title = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "Planes de Membresía • Asesor Yvy Capital",
+                    text = "Solicitar plan",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Selecciona el nivel profesional adaptado a tu cartera inmobiliaria",
+                    text = "Elige tu plan y registra tu comprobante de pago",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -154,153 +158,133 @@ fun AdvisorMembershipPlansDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(440.dp)
+                    .height(460.dp)
                     .testTag("membership_plans_dialog_list")
             ) {
+                item {
+                    Text(
+                        text = "1. Selecciona tu plan",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
                 items(AdvisorMemberships.ALL_PLANS, key = { it.code }) { plan ->
                     val isSelected = selectedPlanCode == plan.code
-                    val isCurrentActive = currentProfile?.planTier == plan.code
                     val isSenior = plan.code == AdvisorMemberships.TIER_SENIOR
 
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(
-                                width = if (isSelected) 2.dp else 1.dp,
-                                color = if (isSelected) YvyGoldAccent else MaterialTheme.colorScheme.outlineVariant,
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                            .clickable {
-                                selectedPlanCode = plan.code
-                                if (!plan.supportsExternalAgentMode) {
-                                    externalAgentMode = false
-                                }
-                            }
+                            .clickable { selectedPlanCode = plan.code }
                             .testTag("plan_card_${plan.code}"),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = YvyShapes.Card,
+                        border = BorderStroke(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                        ),
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isSelected) {
-                                YvyForestPrimary.copy(alpha = 0.10f)
-                            } else {
-                                MaterialTheme.colorScheme.surface
-                            }
-                        )
+                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                            else MaterialTheme.colorScheme.surface
+                        ),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                     ) {
                         Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = plan.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isSelected) YvyForestPrimary else MaterialTheme.colorScheme.onSurface
-                                        )
-                                        if (isSenior) {
-                                            Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = YvyGoldAccent
-                                            ) {
-                                                Text(
-                                                    text = "MÁS COMPLETO",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = YvyForestDeep,
-                                                    fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                        if (isCurrentActive) {
-                                            Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = YvyForestPrimary
-                                            ) {
-                                                Text(
-                                                    text = "ACTUAL",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = Color.White,
-                                                    fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Text(
-                                        text = plan.priceFormatted,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = YvyForestPrimary,
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = YvyGoldAccent.copy(alpha = 0.22f)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = { selectedPlanCode = plan.code }
+                                    )
                                     Text(
-                                        text = "Comisión ${plan.advisorParticipationPercent}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = YvyForestDeep,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        text = plan.name,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
+                                Text(
+                                    text = plan.priceFormatted,
+                                    style = YvyPriceCardStyle,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
                             }
+                            Text(
+                                text = "Límite: ${plan.maxActiveListings} propiedades activas • Comisión ${plan.advisorParticipationPercent}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
 
-                            HorizontalDivider()
+                item {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "2. Método de pago",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
 
-                            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                plan.benefits.forEach { benefit ->
-                                    Row(
-                                        verticalAlignment = Alignment.Top,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = null,
-                                            tint = YvyForestPrimary,
-                                            modifier = Modifier
-                                                .size(16.dp)
-                                                .padding(top = 2.dp)
-                                        )
-                                        Text(
-                                            text = benefit,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        paymentMethods.forEach { method ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedPaymentMethod = method },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selectedPaymentMethod == method,
+                                    onClick = { selectedPaymentMethod = method }
+                                )
+                                Text(
+                                    text = method,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            when (selectedPaymentMethod) {
+                                "Transferencia bancaria" -> {
+                                    Text(
+                                        text = "Datos de transferencia:\nBanco Continental • Cta Cte: 01-234567-89\nTitular: Yvy Capital S.A. • RUC: 80099887-1",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                 }
-
-                                if (plan.canGenerateVideos) {
-                                    Row(
-                                        verticalAlignment = Alignment.Top,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Videocam,
-                                            contentDescription = null,
-                                            tint = YvyGoldAccent,
-                                            modifier = Modifier
-                                                .size(16.dp)
-                                                .padding(top = 2.dp)
-                                        )
-                                        Text(
-                                            text = "Exclusivo Senior: Generador de Videos Promocionales MP4 para propiedades.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = YvyForestPrimary
-                                        )
-                                    }
+                                "Billetera electrónica" -> {
+                                    Text(
+                                        text = "Envío Tigo Money / Billetera Personal:\nNúmero: (0981) 123-456 • Titular: Yvy Capital S.A.",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                else -> {
+                                    Text(
+                                        text = "Pago en Oficina:\nPaseo La Galería, Torre 1, Piso 14, Asunción.",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                 }
                             }
                         }
@@ -308,70 +292,56 @@ fun AdvisorMembershipPlansDialog(
                 }
 
                 item {
-                    OutlinedTextField(
-                        value = agencyName,
-                        onValueChange = { agencyName = it },
-                        label = { Text("Inmobiliaria o Firma del Asesor") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "3. Referencia o comprobante",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
 
-                if (selectedSpec.supportsExternalAgentMode) {
-                    item {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Modalidad de Agente Externo a Yvy Capital",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "Opera con tu marca externa manteniendo acceso a las herramientas de tu rol.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Switch(
-                                    checked = externalAgentMode,
-                                    onCheckedChange = { externalAgentMode = it },
-                                    modifier = Modifier.testTag("external_agent_mode_switch")
-                                )
+                item {
+                    OutlinedTextField(
+                        value = paymentReference,
+                        onValueChange = {
+                            paymentReference = it
+                            if (referenceError && it.isNotBlank()) referenceError = false
+                        },
+                        label = { Text("Nro. de comprobante o referencia") },
+                        placeholder = { Text("Ej: Transf. 984321 / Recibo oficina") },
+                        isError = referenceError,
+                        supportingText = {
+                            if (referenceError) {
+                                Text("Ingresa el número de comprobante o detalle de pago")
                             }
-                        }
-                    }
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("payment_reference_input")
+                    )
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    onSelectAndActivatePlan(
-                        selectedPlanCode,
-                        agencyName.ifBlank { "Yvy Capital Pro" },
-                        externalAgentMode && selectedSpec.supportsExternalAgentMode
-                    )
+                    if (paymentReference.isBlank()) {
+                        referenceError = true
+                    } else {
+                        onRequestPlan(selectedPlanCode, selectedPaymentMethod, paymentReference.trim())
+                    }
                 },
                 enabled = !isBusy,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = YvyForestPrimary,
                     contentColor = Color.White
                 ),
-                modifier = Modifier.testTag("unlock_pro_confirm_btn")
+                modifier = Modifier.testTag("submit_plan_request_btn")
             ) {
                 Text(
-                    text = if (isBusy) "Activando..." else "Activar ${selectedSpec.name} (${selectedSpec.priceFormatted})",
+                    text = if (isBusy) "Enviando..." else "Solicitar plan",
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -518,18 +488,14 @@ fun SeniorVideoGeneratorDialog(
                         )
 
                         Card(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = YvyShapes.Card,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(if (aspectRatio == "9:16") 210.dp else 155.dp)
-                                    .background(
-                                        Brush.linearGradient(
-                                            colors = listOf(YvyForestDeep, YvyForestPrimary, YvyForestMedium)
-                                        )
-                                    )
+                                    .background(MaterialTheme.colorScheme.primary)
                                     .padding(14.dp)
                             ) {
                                 Column(
@@ -809,12 +775,8 @@ fun PromoVideoPreviewDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(if (video.aspectRatio == "9:16") 250.dp else 180.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(YvyForestDeep, YvyForestPrimary, YvyForestMedium)
-                            )
-                        )
+                        .clip(YvyShapes.Card)
+                        .background(MaterialTheme.colorScheme.primary)
                         .padding(16.dp)
                 ) {
                     Column(

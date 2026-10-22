@@ -55,6 +55,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,15 +74,40 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.outlined.Bathtub
+import androidx.compose.material.icons.outlined.Bed
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.DirectionsCar
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.SquareFoot
+import androidx.compose.material.icons.outlined.Verified
+import com.example.data.model.AdvisorMemberships
 import com.example.data.model.Property
 import com.example.data.model.UserProfile
 import com.example.ui.components.MetricBadge
 import com.example.ui.components.PropertyArtworkHeader
 import com.example.ui.components.PublicWebFallbackPreviewDialog
+import com.example.ui.components.SectionHeader
 import com.example.ui.components.SharePropertyDirectLinkDialog
+import com.example.ui.components.StaffBadge
+import com.example.ui.components.StatusBadge
+import com.example.ui.components.StatusBadgeTone
+import com.example.ui.components.YvyButton
+import com.example.ui.components.YvyButtonVariant
+import com.example.ui.theme.YvyEditorialSerifFamily
 import com.example.ui.theme.YvyForestDeep
 import com.example.ui.theme.YvyForestPrimary
 import com.example.ui.theme.YvyGoldAccent
+import com.example.ui.theme.YvyPriceEditorialStyle
+import com.example.ui.theme.YvyShapes
+import com.example.ui.theme.YvySpacing
 import com.example.ui.util.CurrencyFormatter
 import com.example.ui.util.DeepLinkHandler
 
@@ -90,6 +117,10 @@ fun PropertyDetailScreen(
     property: Property,
     userProfile: UserProfile?,
     isFavorite: Boolean,
+    isAgentStaff: Boolean = false,
+    agentMembershipTier: String? = null,
+    isAdmin: Boolean = false,
+    onToggleVerified: ((Boolean) -> Unit)? = null,
     displayCurrency: String,
     isBusy: Boolean,
     onBack: () -> Unit,
@@ -235,67 +266,47 @@ fun PropertyDetailScreen(
         // 2. Información Principal, Precio Dual PYG/USD y Superficies
         item {
             Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                modifier = Modifier.padding(YvySpacing.ScreenHorizontal),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Row(
+                FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = CurrencyFormatter.operationLabel(property.operationType),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-                    }
-                    Surface(
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            text = CurrencyFormatter.propertyTypeLabel(property.propertyType),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
-                    }
+                    StatusBadge(
+                        text = CurrencyFormatter.operationLabel(property.operationType),
+                        tone = StatusBadgeTone.TERRACOTTA_ACCENT
+                    )
+                    StatusBadge(
+                        text = CurrencyFormatter.propertyTypeLabel(property.propertyType),
+                        tone = StatusBadgeTone.NEUTRAL_OUTLINED
+                    )
                     if (property.verified) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Verified,
-                                contentDescription = "Verificada",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Verificada",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
+                        StatusBadge(
+                            text = "Verificada",
+                            tone = StatusBadgeTone.MONTE_PRIMARY,
+                            leadingIcon = Icons.Outlined.Verified
+                        )
                     }
                 }
 
                 Text(
                     text = property.title,
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontFamily = YvyEditorialSerifFamily
+                    ),
                     color = MaterialTheme.colorScheme.onBackground
                 )
 
-                // Price Card (Single Currency Display aligned with active currency switch)
+                // Price Card (Editorial Serif + Tabular Numerals in Terracotta)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        containerColor = MaterialTheme.colorScheme.surface
                     ),
-                    shape = RoundedCornerShape(16.dp)
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    shape = YvyShapes.Card
                 ) {
                     Row(
                         modifier = Modifier
@@ -304,49 +315,48 @@ fun PropertyDetailScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Precio de publicación",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                softWrap = false
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = CurrencyFormatter.formatPrice(
                                     amount = property.price,
                                     sourceCurrency = property.currency
                                 ),
-                                style = MaterialTheme.typography.headlineMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
+                                style = YvyPriceEditorialStyle,
+                                color = MaterialTheme.colorScheme.secondary,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
-                        Surface(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text(
-                                text = if (property.currency.uppercase() == "USD") "USD ($)" else "PYG (₲)",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
-                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        StatusBadge(
+                            text = if (property.currency.uppercase() == "USD") "USD ($)" else "PYG (₲)",
+                            tone = StatusBadgeTone.NEUTRAL_OUTLINED
+                        )
                     }
                 }
 
                 // Location Row
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.LocationOn,
+                        imageVector = Icons.Outlined.LocationOn,
                         contentDescription = "Ubicación",
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
                             text = "${property.neighborhood}, ${property.city} • Dpto. ${property.department}",
-                            style = MaterialTheme.typography.titleSmall
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         if (property.address.isNotBlank()) {
                             Text(
@@ -360,59 +370,54 @@ fun PropertyDetailScreen(
 
                 // Superficies y Características Principales
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    MetricBadge(Icons.Default.SquareFoot, "Total: ${property.areaTotalM2} m²")
+                    MetricBadge(Icons.Outlined.SquareFoot, "Total: ${property.areaTotalM2} m²")
                     if (property.areaBuiltM2 > 0) {
-                        MetricBadge(Icons.Default.SquareFoot, "Construido: ${property.areaBuiltM2} m²")
+                        MetricBadge(Icons.Outlined.SquareFoot, "Construido: ${property.areaBuiltM2} m²")
                     }
                     if (property.bedrooms > 0) {
-                        MetricBadge(Icons.Default.Bed, "${property.bedrooms} Dormitorios")
+                        MetricBadge(Icons.Outlined.Bed, "${property.bedrooms} dormitorios")
                     }
                     if (property.bathrooms > 0) {
-                        MetricBadge(Icons.Default.Bathtub, "${property.bathrooms} Baños")
+                        MetricBadge(Icons.Outlined.Bathtub, "${property.bathrooms} baños")
                     }
                     if (property.parkingSpaces > 0) {
-                        MetricBadge(Icons.Default.DirectionsCar, "${property.parkingSpaces} Cocheras")
+                        MetricBadge(Icons.Outlined.DirectionsCar, "${property.parkingSpaces} cocheras")
                     }
                 }
 
-                HorizontalDivider()
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
                 // Descripción detallada
-                Text(
-                    text = "Descripción del Inmueble",
-                    style = MaterialTheme.typography.titleLarge
-                )
+                SectionHeader(title = "Descripción del inmueble")
                 Text(
                     text = property.description,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.88f)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 // Comodidades y Equipamiento
                 if (property.amenities.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Comodidades y Equipamiento",
-                        style = MaterialTheme.typography.titleLarge
-                    )
+                    SectionHeader(title = "Comodidades y equipamiento")
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         property.amenities.forEach { amenity ->
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                                shape = YvyShapes.FieldAndButton,
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.CheckCircle,
+                                        imageVector = Icons.Outlined.CheckCircle,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(14.dp)
@@ -420,7 +425,8 @@ fun PropertyDetailScreen(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = amenity,
-                                        style = MaterialTheme.typography.labelMedium
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             }
@@ -428,62 +434,60 @@ fun PropertyDetailScreen(
                     }
                 }
 
-                HorizontalDivider()
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
                 // 3. Ubicación Geográfica y Acceso a Google Maps
-                Text(
-                    text = "Ubicación y Mapa",
-                    style = MaterialTheme.typography.titleLarge
-                )
+                SectionHeader(title = "Ubicación y mapa")
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = YvyShapes.Card,
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(150.dp)
-                                .background(Color(0xFFDCE8E0))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
                         ) {
+                            val gridLineColor = MaterialTheme.colorScheme.surface
+                            val accentLineColor = MaterialTheme.colorScheme.outline
+                            val pinColor = MaterialTheme.colorScheme.secondary
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 val w = size.width
                                 val h = size.height
-                                // Stylized urban street grid
                                 for (i in 1..5) {
                                     drawLine(
-                                        color = Color.White,
+                                        color = gridLineColor,
                                         start = Offset(0f, h * (i / 6f)),
                                         end = Offset(w, h * (i / 6f)),
                                         strokeWidth = 6f
                                     )
                                     drawLine(
-                                        color = Color.White,
+                                        color = gridLineColor,
                                         start = Offset(w * (i / 6f), 0f),
                                         end = Offset(w * (i / 6f), h),
                                         strokeWidth = 6f
                                     )
                                 }
-                                // Main avenue diagonal
                                 drawLine(
-                                    color = YvyGoldAccent.copy(alpha = 0.6f),
+                                    color = accentLineColor,
                                     start = Offset(0f, h * 0.8f),
                                     end = Offset(w, h * 0.2f),
-                                    strokeWidth = 12f
+                                    strokeWidth = 10f
                                 )
-                                // Location Pin
                                 drawCircle(
-                                    color = YvyForestPrimary.copy(alpha = 0.25f),
-                                    radius = 36f,
+                                    color = pinColor.copy(alpha = 0.22f),
+                                    radius = 32f,
                                     center = Offset(w * 0.5f, h * 0.5f)
                                 )
                                 drawCircle(
-                                    color = YvyForestPrimary,
-                                    radius = 14f,
+                                    color = pinColor,
+                                    radius = 12f,
                                     center = Offset(w * 0.5f, h * 0.5f)
                                 )
                             }
@@ -498,7 +502,8 @@ fun PropertyDetailScreen(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = "${property.neighborhood}, ${property.city}",
-                                    style = MaterialTheme.typography.titleSmall
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = "Coord: ${property.latitude}, ${property.longitude}",
@@ -506,7 +511,9 @@ fun PropertyDetailScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            OutlinedButton(
+                            Spacer(modifier = Modifier.width(8.dp))
+                            YvyButton(
+                                text = "Abrir Mapa",
                                 onClick = {
                                     val geoUri = Uri.parse(
                                         "geo:${property.latitude},${property.longitude}?q=${property.latitude},${property.longitude}(${Uri.encode(property.title)})"
@@ -521,16 +528,10 @@ fun PropertyDetailScreen(
                                         context.startActivity(Intent(Intent.ACTION_VIEW, webUri))
                                     }
                                 },
-                                modifier = Modifier.testTag("open_map_btn")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Map,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Abrir Mapa")
-                            }
+                                variant = YvyButtonVariant.SECONDARY_OUTLINED,
+                                leadingIcon = Icons.Outlined.Map,
+                                testTag = "open_map_btn"
+                            )
                         }
                     }
                 }
@@ -538,10 +539,12 @@ fun PropertyDetailScreen(
                 // 4. Información del Asesor y Acciones de Contacto / Visita / WhatsApp
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = YvyShapes.Card,
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                    )
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(18.dp),
@@ -549,26 +552,41 @@ fun PropertyDetailScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
-                                modifier = Modifier.size(48.dp),
+                                modifier = Modifier.size(44.dp),
                                 shape = CircleShape,
-                                color = YvyForestPrimary
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        imageVector = Icons.Default.Person,
+                                        imageVector = Icons.Outlined.Person,
                                         contentDescription = null,
-                                        tint = Color.White
+                                        tint = MaterialTheme.colorScheme.primary
                                     )
                                 }
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = property.agentName,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (isAgentStaff) {
+                                        StaffBadge()
+                                    } else if (!agentMembershipTier.isNullOrBlank() && agentMembershipTier != "FREE") {
+                                        StatusBadge(
+                                            text = AdvisorMemberships.getSpec(agentMembershipTier)?.name ?: "Asesor Pro",
+                                            tone = StatusBadgeTone.PRO_GOLD
+                                        )
+                                    }
+                                }
                                 Text(
-                                    text = property.agentName,
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Text(
-                                    text = property.agentAgency,
+                                    text = if (isAgentStaff) "Equipo Yvy Capital" else property.agentAgency,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -579,44 +597,34 @@ fun PropertyDetailScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Button(
+                            YvyButton(
+                                text = "Solicitar Visita",
                                 onClick = {
                                     defaultInquiryType = "VISIT"
                                     showInquiryDialog = true
                                 },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("request_visit_btn"),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = YvyForestPrimary,
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CalendarMonth,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Solicitar Visita")
-                            }
+                                variant = YvyButtonVariant.PRIMARY,
+                                leadingIcon = Icons.Outlined.CalendarMonth,
+                                modifier = Modifier.weight(1f),
+                                testTag = "request_visit_btn"
+                            )
 
-                            OutlinedButton(
+                            YvyButton(
+                                text = "Consultar Info",
                                 onClick = {
                                     defaultInquiryType = "INFO"
                                     showInquiryDialog = true
                                 },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("contact_agent_btn")
-                            ) {
-                                Text("Consultar Info")
-                            }
+                                variant = YvyButtonVariant.SECONDARY_OUTLINED,
+                                modifier = Modifier.weight(1f),
+                                testTag = "contact_agent_btn"
+                            )
                         }
 
                         // Botón WhatsApp oficial cuando el asesor tiene número público autorizado
                         if (property.agentWhatsapp.isNotBlank()) {
-                            Button(
+                            YvyButton(
+                                text = "Contactar por WhatsApp (${property.agentWhatsapp})",
                                 onClick = {
                                     val cleanPhone = property.agentWhatsapp.replace(Regex("[^0-9]"), "")
                                     val directUrl = DeepLinkHandler.buildPropertyLink(property.id)
@@ -627,38 +635,74 @@ fun PropertyDetailScreen(
                                     } catch (_: Exception) {
                                     }
                                 },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("whatsapp_contact_btn"),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF1F7A4C),
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Chat,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Contactar por WhatsApp (${property.agentWhatsapp})")
-                            }
+                                variant = YvyButtonVariant.PRIMARY,
+                                leadingIcon = Icons.AutoMirrored.Filled.Chat,
+                                fullWidth = true,
+                                testTag = "whatsapp_contact_btn"
+                            )
                         }
 
                         // Botón de Enlace Directo Compartible de la Propiedad (App Link)
-                        OutlinedButton(
+                        YvyButton(
+                            text = "Compartir Enlace Directo a esta Propiedad",
                             onClick = { showShareDialog = true },
+                            variant = YvyButtonVariant.SECONDARY_OUTLINED,
+                            leadingIcon = Icons.Outlined.Link,
+                            fullWidth = true,
+                            testTag = "share_direct_link_card_btn"
+                        )
+                    }
+                }
+
+                // Control exclusivo para administradores: interruptor de verificación oficial
+                if (isAdmin && onToggleVerified != null) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().testTag("admin_verified_card"),
+                        shape = YvyShapes.Card,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    ) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("share_direct_link_card_btn")
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Link,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Verified,
+                                        contentDescription = null,
+                                        tint = if (property.verified) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = "Propiedad Verificada",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Text(
+                                    text = if (property.verified) "Verificada oficialmente por administración de Yvy Capital" else "Sin verificar (anuncio en revisión)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = property.verified,
+                                onCheckedChange = { onToggleVerified(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                                ),
+                                modifier = Modifier.testTag("admin_verified_switch")
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Compartir Enlace Directo a esta Propiedad")
                         }
                     }
                 }
@@ -711,7 +755,10 @@ fun PropertyDetailScreen(
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         listOf(
                             "VISIT" to "Visita",
                             "INFO" to "Información",
@@ -720,7 +767,13 @@ fun PropertyDetailScreen(
                             FilterChip(
                                 selected = inquiryType == code,
                                 onClick = { inquiryType = code },
-                                label = { Text(label) }
+                                label = {
+                                    Text(
+                                        text = label,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
                             )
                         }
                     }
