@@ -27,6 +27,14 @@ data class EffectivePlan(
     val supportsExternalAgentMode: Boolean get() = if (isStaff) false else (AdvisorMemberships.getSpec(tier)?.supportsExternalAgentMode ?: false)
     val participationPercent: String get() = if (isStaff) "4,5 %" else (AdvisorMemberships.getSpec(tier)?.advisorParticipationPercent ?: "—")
 
+    val name: String get() = when {
+        isStaff -> "Plan Senior"
+        tier == AdvisorMemberships.TIER_SENIOR -> "Plan Senior"
+        tier == AdvisorMemberships.TIER_INTERMEDIO -> "Plan Intermedio"
+        tier == AdvisorMemberships.TIER_INICIAL -> "Plan Inicial"
+        else -> "Cuenta Estándar"
+    }
+
     val badgeLabel: String get() = when {
         isStaff -> "Plan Senior · Personal Yvy Capital"
         tier == AdvisorMemberships.TIER_SENIOR -> "Plan Senior"

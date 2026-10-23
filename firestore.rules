@@ -25,93 +25,176 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         ('email' in request.auth.token && 'email_verified' in request.auth.token &&
-         request.auth.token.email == 'sa.vergara.py@gmail.com' && request.auth.token.email_verified == true)
+         request.auth.token.email == 'sa.vergara.py@gmail.com' && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
-    }
-
-    function userProfileExists() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
-    }
-
-    function getUserProfile() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
     function staffPath(uid) {
       return /databases/$(database)/documents/staff/$(uid);
     }
 
-    function isActiveStaffUid(uid) {
+    function isStaffActive(uid) {
       return exists(staffPath(uid)) && get(staffPath(uid)).data.get('active', false) == true;
     }
 
     function isActiveStaff() {
-      return isSignedIn() && isActiveStaffUid(request.auth.uid);
+      return isSignedIn() && isStaffActive(request.auth.uid);
     }
 
     function isStaffAdmin() {
-      return isActiveStaff() && get(staffPath(request.auth.uid)).data.get('role', '') == 'admin';
+      let uid = request.auth.uid;
+      let hasStaff = exists(staffPath(uid));
+      return hasStaff
+        && get(staffPath(uid)).data.get('active', false) == true
+        && get(staffPath(uid)).data.get('role', '') == 'admin';
     }
 
     function isPlatformAdmin() {
       return isAdmin() || isStaffAdmin();
     }
+
     function membershipPath(uid) {
       return /databases/$(database)/documents/memberships/$(uid);
     }
+
     function counterPath(uid) {
       return /databases/$(database)/documents/listingCounters/$(uid);
     }
+
     function propertyPath(id) {
       return /databases/$(database)/documents/properties/$(id);
     }
+
     function hasActivePlan(uid, tiers) {
-      return exists(membershipPath(uid))
+      let hasMem = exists(membershipPath(uid));
+      return hasMem
         && get(membershipPath(uid)).data.get('status', '') == 'active'
         && get(membershipPath(uid)).data.get('planTier', 'FREE') in tiers
-        && (get(membershipPath(uid)).data.get('expiresAt', null) == null
-            || get(membershipPath(uid)).data.expiresAt > request.time);
+        && (get(membershipPath(uid)).data.get('expiresAt', null) == null || get(membershipPath(uid)).data.expiresAt > request.time);
     }
-    function listingLimitOk(uid, newCount, data) {
-      return ((isActiveStaff() || hasActivePlan(uid, ['PLAN_INTERMEDIO', 'PLAN_SENIOR'])) && newCount <= 10)
-        || (hasActivePlan(uid, ['PLAN_INICIAL']) && newCount <= 5 && data.featured == false);
-    }
+
     function wasActiveListing(id) {
       return exists(propertyPath(id)) && get(propertyPath(id)).data.status == 'active';
     }
+
     function willBeActiveListing(id) {
       return existsAfter(propertyPath(id)) && getAfter(propertyPath(id)).data.status == 'active';
     }
-    function counterIncrementedFor(uid, propertyId) {
-      return getAfter(counterPath(uid)).data.lastPropertyId == propertyId && (
-        (!exists(counterPath(uid)) && getAfter(counterPath(uid)).data.count == 1) ||
-        (exists(counterPath(uid)) && getAfter(counterPath(uid)).data.count == get(counterPath(uid)).data.count + 1)
+
+    // Valida en el backend el plan y límite de publicaciones activas del asesor (optimizado con let para ≤ 6 reads y ≤ 10 let vars)
+    function canAdvisorPublishProperty(propertyId, data) {
+      let uid = request.auth.uid;
+      let isStaff = exists(staffPath(uid)) && get(staffPath(uid)).data.get('active', false) == true;
+      let isPlatAdm = isAdmin() || (isStaff && get(staffPath(uid)).data.get('role', '') == 'admin');
+
+      let memTier = exists(membershipPath(uid))
+        && get(membershipPath(uid)).data.get('status', '') == 'active'
+        && (get(membershipPath(uid)).data.get('expiresAt', null) == null || get(membershipPath(uid)).data.expiresAt > request.time)
+        ? get(membershipPath(uid)).data.get('planTier', 'FREE')
+        : 'FREE';
+
+      let canFeature = isStaff || memTier in ['PLAN_INTERMEDIO', 'PLAN_SENIOR'];
+      let maxListings = canFeature ? 10 : (memTier == 'PLAN_INICIAL' ? 5 : 0);
+
+      let hasCounter = exists(counterPath(uid));
+      let hasAfterCounter = existsAfter(counterPath(uid));
+      let afterCounter = hasAfterCounter ? getAfter(counterPath(uid)).data : {};
+      let counterInc = hasAfterCounter && afterCounter.get('lastPropertyId', '') == propertyId
+        && ((!hasCounter && afterCounter.count == 1) || (hasCounter && afterCounter.count == get(counterPath(uid)).data.get('count', 0) + 1));
+
+      return isPlatAdm || (
+        data.verified == false && maxListings > 0 && (
+          (data.status == 'active'
+            && counterInc
+            && hasAfterCounter
+            && afterCounter.count <= maxListings
+            && (data.featured == false || canFeature)
+          ) ||
+          (data.status != 'active' && (data.featured == false || canFeature))
+        )
       );
     }
-    function counterDecrementedFor(uid, propertyId) {
-      return exists(counterPath(uid))
-        && getAfter(counterPath(uid)).data.lastPropertyId == propertyId
-        && getAfter(counterPath(uid)).data.count == get(counterPath(uid)).data.count - 1;
+
+    // Valida en el backend la actualización y cambio de estado de propiedades (optimizado con let para ≤ 6 reads y ≤ 10 let vars)
+    function canAdvisorUpdateProperty(propertyId, incomingData, existingData) {
+      let uid = request.auth.uid;
+      let isStaff = exists(staffPath(uid)) && get(staffPath(uid)).data.get('active', false) == true;
+      let isPlatAdm = isAdmin() || (isStaff && get(staffPath(uid)).data.get('role', '') == 'admin');
+
+      let memTier = exists(membershipPath(uid))
+        && get(membershipPath(uid)).data.get('status', '') == 'active'
+        && (get(membershipPath(uid)).data.get('expiresAt', null) == null || get(membershipPath(uid)).data.expiresAt > request.time)
+        ? get(membershipPath(uid)).data.get('planTier', 'FREE')
+        : 'FREE';
+
+      let canFeature = isStaff || memTier in ['PLAN_INTERMEDIO', 'PLAN_SENIOR'];
+      let maxListings = canFeature ? 10 : (memTier == 'PLAN_INICIAL' ? 5 : 0);
+
+      let hasCounter = exists(counterPath(uid));
+      let statusChanged = (existingData.status == 'active') != (incomingData.status == 'active');
+
+      let counterValid = !statusChanged || (
+        incomingData.status == 'active'
+          ? (
+              existsAfter(counterPath(uid)) &&
+              getAfter(counterPath(uid)).data.get('lastPropertyId', '') == propertyId &&
+              ((!hasCounter && getAfter(counterPath(uid)).data.count == 1) || (hasCounter && getAfter(counterPath(uid)).data.count == get(counterPath(uid)).data.get('count', 0) + 1)) &&
+              getAfter(counterPath(uid)).data.count <= maxListings
+            )
+          : (
+              hasCounter &&
+              existsAfter(counterPath(uid)) &&
+              getAfter(counterPath(uid)).data.get('lastPropertyId', '') == propertyId &&
+              getAfter(counterPath(uid)).data.count == get(counterPath(uid)).data.get('count', 0) - 1
+            )
+      );
+
+      return isPlatAdm || (
+        existingData.agentId == uid &&
+        incomingData.agentId == existingData.agentId &&
+        incomingData.createdAt == existingData.createdAt &&
+        incomingData.verified == existingData.verified &&
+        (incomingData.featured == false || canFeature) &&
+        counterValid &&
+        incomingData.diff(existingData).affectedKeys().hasOnly([
+          'title', 'description', 'operationType', 'propertyType', 'price', 'currency',
+          'department', 'city', 'neighborhood', 'address', 'latitude', 'longitude',
+          'areaTotalM2', 'areaBuiltM2', 'bedrooms', 'bathrooms', 'parkingSpaces',
+          'amenities', 'imageUrls', 'featured', 'status', 'agentName',
+          'agentAgency', 'agentWhatsapp', 'viewsCount', 'updatedAt'
+        ])
+      );
     }
 
-    // Valida en el backend el plan y límite de publicaciones activas del asesor
-    function canAdvisorPublishProperty(propertyId, data) {
-      return isPlatformAdmin() || (
-        data.verified == false && (
-          (data.status == 'active'
-            && counterIncrementedFor(request.auth.uid, propertyId)
-            && listingLimitOk(request.auth.uid, getAfter(counterPath(request.auth.uid)).data.count, data))
-          ||
-          (data.status != 'active' && listingLimitOk(request.auth.uid, 0, data))
-        )
+    // Valida en el backend la eliminación de propiedades (optimizado con let para ≤ 4 reads)
+    function canAdvisorDeleteProperty(propertyId, existingData) {
+      let uid = request.auth.uid;
+      let isStaff = exists(staffPath(uid)) && get(staffPath(uid)).data.get('active', false) == true;
+      let isPlatAdm = isAdmin() || (isStaff && get(staffPath(uid)).data.get('role', '') == 'admin');
+
+      let hasCounter = exists(counterPath(uid));
+      let counterDec = hasCounter
+        && existsAfter(counterPath(uid))
+        && getAfter(counterPath(uid)).data.get('lastPropertyId', '') == propertyId
+        && getAfter(counterPath(uid)).data.count == get(counterPath(uid)).data.get('count', 0) - 1;
+
+      return isPlatAdm || (
+        existingData.agentId == uid &&
+        (existingData.status != 'active' || counterDec)
       );
     }
 
     // Valida en el backend que el usuario tenga Membresía Senior activa
     function hasSeniorMembership() {
-      return isActiveStaff() || (isSignedIn() && hasActivePlan(request.auth.uid, ['PLAN_SENIOR']));
+      let uid = request.auth.uid;
+      let isStaff = exists(staffPath(uid)) && get(staffPath(uid)).data.get('active', false) == true;
+      let isSenior = exists(membershipPath(uid))
+        && get(membershipPath(uid)).data.get('status', '') == 'active'
+        && get(membershipPath(uid)).data.get('planTier', 'FREE') == 'PLAN_SENIOR'
+        && (get(membershipPath(uid)).data.get('expiresAt', null) == null || get(membershipPath(uid)).data.expiresAt > request.time);
+      return isSignedIn() && (isStaff || isSenior);
     }
 
     // 3. Entity Validation Blueprints
@@ -141,8 +224,8 @@ service cloud.firestore {
     }
 
     function isValidProperty(data) {
-      return data.title is string && data.title.size() >= 3 && data.title.size() <= 140 &&
-             data.description is string && data.description.size() >= 10 && data.description.size() <= 3000 &&
+      return data.title is string && data.title.size() >= 2 && data.title.size() <= 140 &&
+             data.description is string && data.description.size() >= 1 && data.description.size() <= 3000 &&
              data.operationType is string && (data.operationType == 'SALE' || data.operationType == 'RENT') &&
              data.propertyType is string && (
                data.propertyType == 'HOUSE' ||
@@ -154,25 +237,25 @@ service cloud.firestore {
              ) &&
              (data.price is int || data.price is float) && data.price > 0 &&
              data.currency is string && (data.currency == 'PYG' || data.currency == 'USD') &&
-             data.department is string && data.department.size() >= 2 && data.department.size() <= 80 &&
-             data.city is string && data.city.size() >= 2 && data.city.size() <= 80 &&
-             data.neighborhood is string && data.neighborhood.size() >= 1 && data.neighborhood.size() <= 80 &&
-             data.address is string && data.address.size() >= 2 && data.address.size() <= 180 &&
+             data.department is string && data.department.size() >= 1 && data.department.size() <= 80 &&
+             data.city is string && data.city.size() >= 1 && data.city.size() <= 80 &&
+             data.neighborhood is string && data.neighborhood.size() <= 80 &&
+             data.address is string && data.address.size() <= 250 &&
              (data.latitude is int || data.latitude is float) && data.latitude >= -90 && data.latitude <= 90 &&
              (data.longitude is int || data.longitude is float) && data.longitude >= -180 && data.longitude <= 180 &&
-             data.areaTotalM2 is int && data.areaTotalM2 >= 1 && data.areaTotalM2 <= 100000000 &&
+             data.areaTotalM2 is int && data.areaTotalM2 >= 0 && data.areaTotalM2 <= 100000000 &&
              data.areaBuiltM2 is int && data.areaBuiltM2 >= 0 && data.areaBuiltM2 <= 10000000 &&
              data.bedrooms is int && data.bedrooms >= 0 && data.bedrooms <= 50 &&
              data.bathrooms is int && data.bathrooms >= 0 && data.bathrooms <= 50 &&
              data.parkingSpaces is int && data.parkingSpaces >= 0 && data.parkingSpaces <= 100 &&
-             data.amenities is list && data.amenities.size() <= 20 && (data.amenities.size() == 0 || (data.amenities[0] is string && data.amenities[0].size() <= 60)) &&
-             data.imageUrls is list && data.imageUrls.size() <= 15 && (data.imageUrls.size() == 0 || (data.imageUrls[0] is string && data.imageUrls[0].size() <= 500)) &&
+             data.amenities is list && data.amenities.size() <= 30 && (data.amenities.size() == 0 || (data.amenities[0] is string && data.amenities[0].size() <= 120)) &&
+             data.imageUrls is list && data.imageUrls.size() <= 20 && (data.imageUrls.size() == 0 || (data.imageUrls[0] is string && data.imageUrls[0].size() <= 2000)) &&
              data.featured is bool &&
              data.status is string && (data.status == 'active' || data.status == 'reserved' || data.status == 'sold' || data.status == 'paused') &&
              data.agentId is string && data.agentId.size() <= 128 &&
-             data.agentName is string && data.agentName.size() >= 2 && data.agentName.size() <= 100 &&
-             data.agentAgency is string && data.agentAgency.size() >= 1 && data.agentAgency.size() <= 120 &&
-             data.agentWhatsapp is string && data.agentWhatsapp.size() >= 6 && data.agentWhatsapp.size() <= 30 &&
+             data.agentName is string && data.agentName.size() >= 1 && data.agentName.size() <= 100 &&
+             data.agentAgency is string && data.agentAgency.size() <= 120 &&
+             data.agentWhatsapp is string && data.agentWhatsapp.size() >= 4 && data.agentWhatsapp.size() <= 40 &&
              data.verified is bool &&
              (!('viewsCount' in data) || (data.viewsCount is int && data.viewsCount >= 0)) &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
@@ -342,42 +425,19 @@ service cloud.firestore {
       allow update: if isSignedIn() &&
                        isValidId(propertyId) &&
                        isValidProperty(incoming()) && (
-                         isPlatformAdmin() || (
-                           existing().agentId == request.auth.uid &&
-                           incoming().agentId == existing().agentId &&
-                           incoming().createdAt == existing().createdAt &&
-                           incoming().verified == existing().verified &&
-                           (incoming().featured == false || isActiveStaff() || hasActivePlan(request.auth.uid, ['PLAN_INTERMEDIO', 'PLAN_SENIOR'])) &&
-                           (
-                             ((existing().status == 'active') == (incoming().status == 'active'))
-                             || (existing().status != 'active' && incoming().status == 'active'
-                                 && counterIncrementedFor(request.auth.uid, propertyId)
-                                 && listingLimitOk(request.auth.uid, getAfter(counterPath(request.auth.uid)).data.count, incoming()))
-                             || (existing().status == 'active' && incoming().status != 'active'
-                                 && counterDecrementedFor(request.auth.uid, propertyId))
-                           ) &&
-                           incoming().diff(existing()).affectedKeys().hasOnly([
-                             'title', 'description', 'operationType', 'propertyType', 'price', 'currency',
-                             'department', 'city', 'neighborhood', 'address', 'latitude', 'longitude',
-                             'areaTotalM2', 'areaBuiltM2', 'bedrooms', 'bathrooms', 'parkingSpaces',
-                             'amenities', 'imageUrls', 'featured', 'status', 'agentName',
-                             'agentAgency', 'agentWhatsapp', 'viewsCount', 'updatedAt'
-                           ])
-                         ) || (
-                           // Seguimiento de visualizaciones: cualquier usuario autenticado puede incrementar viewsCount en +1
+                         // 1. Seguimiento de visualizaciones: cualquier usuario autenticado incrementa viewsCount en +1 (0 get/exists)
+                         (
                            existing().status == 'active' &&
                            incoming().agentId == existing().agentId &&
                            incoming().createdAt == existing().createdAt &&
                            incoming().diff(existing()).affectedKeys().hasOnly(['viewsCount', 'updatedAt']) &&
                            incoming().viewsCount == existing().get('viewsCount', 0) + 1
-                         )
+                         ) ||
+                         // 2. Modificación o cambio de estado por asesor / admin (≤ 6 get/exists)
+                         canAdvisorUpdateProperty(propertyId, incoming(), existing())
                        );
 
-      allow delete: if isSignedIn() && isValidId(propertyId) && (
-        isPlatformAdmin() ||
-        (existing().agentId == request.auth.uid
-          && (existing().status != 'active' || counterDecrementedFor(request.auth.uid, propertyId)))
-      );
+      allow delete: if isSignedIn() && isValidId(propertyId) && canAdvisorDeleteProperty(propertyId, existing());
     }
 
     // D. Videos Promocionales de Propiedades (/property_videos/{videoId}) - EXCLUSIVO PLAN SENIOR

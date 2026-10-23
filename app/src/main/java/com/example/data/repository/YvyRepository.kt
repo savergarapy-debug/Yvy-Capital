@@ -16,12 +16,19 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.snapshots
+import android.util.Log
+import com.example.data.model.EffectivePlan
+import com.example.data.model.UserMembership
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class YvyRepository(private val db: FirebaseFirestore) {
 
@@ -32,10 +39,28 @@ class YvyRepository(private val db: FirebaseFirestore) {
     )
 
     private val auth get() = Firebase.auth
+    private val viewedPropertiesToday = ConcurrentHashMap.newKeySet<String>()
 
     private fun requireUserId(): String {
         return auth.currentUser?.uid
             ?: throw IllegalStateException("El usuario debe iniciar sesión con Google antes de realizar esta operación.")
+    }
+
+    suspend fun resolveEffectivePlanForUser(uid: String): EffectivePlan {
+        return try {
+            val staffSnap = db.collection("staff").document(uid).get().await()
+            val isStaff = staffSnap.exists() && (staffSnap.getBoolean("active") == true)
+            if (isStaff) {
+                return EffectivePlan.resolveEffectivePlan(isActiveStaff = true, membership = null)
+            }
+            val memSnap = db.collection("memberships").document(uid).get().await()
+            val membership = if (memSnap.exists()) {
+                memSnap.toObject(UserMembership::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+            } else null
+            EffectivePlan.resolveEffectivePlan(isActiveStaff = false, membership = membership)
+        } catch (e: Exception) {
+            EffectivePlan(tier = AdvisorMemberships.TIER_FREE)
+        }
     }
 
     // --- 1. CATÁLOGO DE PROPIEDADES ---
@@ -91,7 +116,10 @@ class YvyRepository(private val db: FirebaseFirestore) {
         }
     }
 
-    suspend fun createProperty(property: Property): Result<String> = runCatching {
+    suspend fun createProperty(
+        property: Property,
+        effectivePlan: EffectivePlan? = null
+    ): Result<String> = runCatching {
         val uid = requireUserId()
         val path = "properties"
         val propId = if (property.id.isNotBlank() && !property.id.startsWith("demo-") && !property.id.startsWith("py_")) {
@@ -103,12 +131,36 @@ class YvyRepository(private val db: FirebaseFirestore) {
         val counterRef = db.collection("listingCounters").document(uid)
         val isActive = property.status == "active"
 
+        val resolvedPlan = if (effectivePlan != null && effectivePlan.tier != AdvisorMemberships.TIER_FREE) {
+            effectivePlan
+        } else {
+            resolveEffectivePlanForUser(uid)
+        }
+
+        if (isActive) {
+            if (!resolvedPlan.canPublish) {
+                throw IllegalStateException("Tu ${resolvedPlan.name} no permite publicar propiedades activas. Adquirí una membresía de asesor para comenzar.")
+            }
+            val preSnap = counterRef.get().await()
+            val preCount = if (preSnap.exists()) preSnap.getLong("count") ?: 0L else 0L
+            if (preCount + 1L > resolvedPlan.maxActiveListings) {
+                throw IllegalStateException("Tu ${resolvedPlan.name} permite ${resolvedPlan.maxActiveListings} publicaciones activas.")
+            }
+        }
+
+        var lastRecordedCount = 0L
         try {
             db.runTransaction { transaction ->
+                val counterSnap = transaction.get(counterRef)
+                val currentCount = if (counterSnap.exists()) counterSnap.getLong("count") ?: 0L else 0L
+                lastRecordedCount = currentCount
+
                 val newCount = if (isActive) {
-                    val counterSnap = transaction.get(counterRef)
-                    val currentCount = if (counterSnap.exists()) counterSnap.getLong("count") ?: 0L else 0L
-                    currentCount + 1L
+                    val nextCount = currentCount + 1L
+                    if (nextCount > resolvedPlan.maxActiveListings) {
+                        throw IllegalStateException("Tu ${resolvedPlan.name} permite ${resolvedPlan.maxActiveListings} publicaciones activas.")
+                    }
+                    nextCount
                 } else {
                     0L
                 }
@@ -160,22 +212,63 @@ class YvyRepository(private val db: FirebaseFirestore) {
             }.await()
         } catch (e: CancellationException) {
             throw e
+        } catch (e: IllegalStateException) {
+            throw e
         } catch (e: Exception) {
             if (e is FirebaseFirestoreException && e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
-                throw IllegalStateException("Alcanzaste el límite de publicaciones activas de tu plan. Pausá o vendé una propiedad, o mejorá tu plan.")
+                val sanitizedPayload = mapOf(
+                    "propertyId" to propId,
+                    "operationType" to property.operationType,
+                    "propertyType" to property.propertyType,
+                    "price" to property.price,
+                    "currency" to property.currency,
+                    "department" to property.department,
+                    "city" to property.city,
+                    "status" to property.status,
+                    "featured" to property.featured,
+                    "amenitiesCount" to property.amenities.size,
+                    "imagesCount" to property.imageUrls.size
+                )
+                Log.e(
+                    TAG,
+                    "PERMISSION_DENIED al publicar propiedad. Error: ${e.message}, Plan: $resolvedPlan, Contador: $lastRecordedCount, Payload: $sanitizedPayload",
+                    e
+                )
+                throw IllegalStateException("No se pudo publicar. Revisá los datos e intentá de nuevo.")
             }
             handleFirestoreError(e, OperationType.CREATE, path)
             throw e
         }
     }
 
-    suspend fun incrementPropertyViews(propertyId: String): Result<Long> = runCatching {
-        requireUserId()
+    suspend fun incrementPropertyViews(
+        propertyId: String,
+        currentUserId: String? = null,
+        propertyOwnerId: String? = null
+    ): Result<Long> = runCatching {
+        val uid = currentUserId ?: Firebase.auth.currentUser?.uid ?: return@runCatching 0L
+        if (propertyOwnerId != null && uid == propertyOwnerId) {
+            // No contar visualizaciones del propio propietario de la propiedad
+            return@runCatching 0L
+        }
+
+        // Limitar a máximo 1 visualización por usuario por día por propiedad
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val viewKey = "$uid:$propertyId:$todayStr"
+        if (viewedPropertiesToday.contains(viewKey)) {
+            return@runCatching 0L
+        }
+
         val path = "properties/$propertyId"
         try {
             val docRef = db.collection("properties").document(propertyId)
             val snap = docRef.get().await()
             if (!snap.exists()) return@runCatching 0L
+            val agentId = snap.getString("agentId") ?: ""
+            if (agentId == uid) {
+                // Propietario de la publicación
+                return@runCatching 0L
+            }
             val currentViews = snap.getLong("viewsCount") ?: 0L
             val nextViews = currentViews + 1L
             docRef.update(
@@ -184,6 +277,7 @@ class YvyRepository(private val db: FirebaseFirestore) {
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
+            viewedPropertiesToday.add(viewKey)
             nextViews
         } catch (e: CancellationException) {
             throw e
@@ -193,12 +287,30 @@ class YvyRepository(private val db: FirebaseFirestore) {
         }
     }
 
-    suspend fun updatePropertyStatus(propertyId: String, newStatus: String): Result<Unit> = runCatching {
+    suspend fun updatePropertyStatus(
+        propertyId: String,
+        newStatus: String,
+        effectivePlan: EffectivePlan? = null
+    ): Result<Unit> = runCatching {
         val uid = requireUserId()
         val path = "properties/$propertyId"
         val propRef = db.collection("properties").document(propertyId)
         val counterRef = db.collection("listingCounters").document(uid)
+        val resolvedPlan = if (effectivePlan != null && effectivePlan.tier != AdvisorMemberships.TIER_FREE) {
+            effectivePlan
+        } else {
+            resolveEffectivePlanForUser(uid)
+        }
 
+        if (newStatus == "active") {
+            val preSnap = counterRef.get().await()
+            val preCount = if (preSnap.exists()) preSnap.getLong("count") ?: 0L else 0L
+            if (preCount + 1L > resolvedPlan.maxActiveListings) {
+                throw IllegalStateException("Tu ${resolvedPlan.name} permite ${resolvedPlan.maxActiveListings} publicaciones activas.")
+            }
+        }
+
+        var lastRecordedCount = 0L
         try {
             db.runTransaction { transaction ->
                 val propSnap = transaction.get(propRef)
@@ -211,10 +323,16 @@ class YvyRepository(private val db: FirebaseFirestore) {
                 if (isBecomingActive || isCeasingActive) {
                     val counterSnap = transaction.get(counterRef)
                     val currentCount = if (counterSnap.exists()) counterSnap.getLong("count") ?: 0L else 0L
-                    newCount = if (isBecomingActive) {
-                        currentCount + 1L
+                    lastRecordedCount = currentCount
+
+                    if (isBecomingActive) {
+                        val nextCount = currentCount + 1L
+                        if (nextCount > resolvedPlan.maxActiveListings) {
+                            throw IllegalStateException("Tu ${resolvedPlan.name} permite ${resolvedPlan.maxActiveListings} publicaciones activas.")
+                        }
+                        newCount = nextCount
                     } else {
-                        (currentCount - 1L).coerceAtLeast(0L)
+                        newCount = (currentCount - 1L).coerceAtLeast(0L)
                     }
                 }
 
@@ -238,9 +356,16 @@ class YvyRepository(private val db: FirebaseFirestore) {
             }.await()
         } catch (e: CancellationException) {
             throw e
+        } catch (e: IllegalStateException) {
+            throw e
         } catch (e: Exception) {
             if (e is FirebaseFirestoreException && e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
-                throw IllegalStateException("Alcanzaste el límite de publicaciones activas de tu plan. Pausá o vendé una propiedad, o mejorá tu plan.")
+                Log.e(
+                    TAG,
+                    "PERMISSION_DENIED al actualizar estado. Error: ${e.message}, Plan: $resolvedPlan, Property: $propertyId, NewStatus: $newStatus, Contador: $lastRecordedCount",
+                    e
+                )
+                throw IllegalStateException("No se pudo actualizar el estado de la propiedad. Revisá los datos e intentá de nuevo.")
             }
             handleFirestoreError(e, OperationType.UPDATE, path)
             throw e
@@ -282,7 +407,8 @@ class YvyRepository(private val db: FirebaseFirestore) {
             throw e
         } catch (e: Exception) {
             if (e is FirebaseFirestoreException && e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
-                throw IllegalStateException("Alcanzaste el límite de publicaciones activas de tu plan. Pausá o vendé una propiedad, o mejorá tu plan.")
+                Log.e(TAG, "PERMISSION_DENIED al eliminar propiedad. Error: ${e.message}, Property: $propertyId", e)
+                throw IllegalStateException("No se pudo eliminar la propiedad. Revisá los datos e intentá de nuevo.")
             }
             handleFirestoreError(e, OperationType.DELETE, path)
             throw e
@@ -733,6 +859,8 @@ class YvyRepository(private val db: FirebaseFirestore) {
     }
 
     companion object {
+        private const val TAG = "YvyRepository"
+
         fun getParaguayDemoProperties(ownerUid: String): List<Property> = listOf(
             Property(
                 id = "py_asuncion_villamorra_01",

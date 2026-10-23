@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.BorderStroke
 import com.example.data.model.AdvisorMembershipSpec
 import com.example.data.model.AdvisorMemberships
+import com.example.data.model.EffectivePlan
 import com.example.data.model.Property
 import com.example.data.model.PropertyPromoVideo
 import com.example.data.model.UserProfile
@@ -98,6 +99,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun AdvisorMembershipPlansDialog(
     currentProfile: UserProfile?,
+    effectivePlan: EffectivePlan? = null,
     isBusy: Boolean,
     onRequestPlan: (
         planTier: String,
@@ -106,14 +108,15 @@ fun AdvisorMembershipPlansDialog(
     ) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val initialTier = remember(currentProfile?.planTier) {
-        if (currentProfile?.planTier in listOf(
+    val initialTier = remember(effectivePlan?.tier) {
+        val targetTier = effectivePlan?.tier?.takeIf { it != AdvisorMemberships.TIER_FREE }
+        if (targetTier in listOf(
                 AdvisorMemberships.TIER_INICIAL,
                 AdvisorMemberships.TIER_INTERMEDIO,
                 AdvisorMemberships.TIER_SENIOR
             )
         ) {
-            currentProfile?.planTier ?: AdvisorMemberships.TIER_SENIOR
+            targetTier ?: AdvisorMemberships.TIER_SENIOR
         } else {
             AdvisorMemberships.TIER_SENIOR
         }

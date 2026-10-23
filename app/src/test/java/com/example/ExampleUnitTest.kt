@@ -72,6 +72,44 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun effectivePlan_resolvesIntermedioAndHonors10ListingsLimit() {
+        val membershipIntermedio = com.example.data.model.UserMembership(
+            id = "SuPlFEApchhpRCYlwPTMZlxCTjH2",
+            planTier = AdvisorMemberships.TIER_INTERMEDIO,
+            status = "active",
+            expiresAt = com.google.firebase.Timestamp(1795305600L, 0)
+        )
+        val plan = com.example.data.model.EffectivePlan.resolveEffectivePlan(
+            isActiveStaff = false,
+            membership = membershipIntermedio
+        )
+        assertEquals(AdvisorMemberships.TIER_INTERMEDIO, plan.tier)
+        assertEquals("Plan Intermedio", plan.name)
+        assertEquals(10, plan.maxActiveListings)
+        assertTrue(plan.canPublish)
+        assertTrue(plan.canFeatureListings)
+        assertTrue(plan.supportsExternalAgentMode)
+        assertFalse(plan.canGenerateVideos)
+        assertFalse(plan.hasDirectCollaboration)
+        assertEquals("4 %", plan.participationPercent)
+    }
+
+    @Test
+    fun effectivePlan_staffResolvesSeniorWithFullPrivileges() {
+        val plan = com.example.data.model.EffectivePlan.resolveEffectivePlan(
+            isActiveStaff = true,
+            membership = null
+        )
+        assertEquals(AdvisorMemberships.TIER_SENIOR, plan.tier)
+        assertTrue(plan.isStaff)
+        assertEquals(10, plan.maxActiveListings)
+        assertTrue(plan.canFeatureListings)
+        assertTrue(plan.canGenerateVideos)
+        assertTrue(plan.hasDirectCollaboration)
+        assertEquals("4,5 %", plan.participationPercent)
+    }
+
+    @Test
     fun promoVideoGenerator_createsValidMp4FileForProperty() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val sampleProp = Property(

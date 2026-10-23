@@ -229,6 +229,7 @@ fun ProfileAndProScreen(
             ProfileSubscreen.PUBLICAR -> {
                 PublicarPropiedadSubscreen(
                     profile = profile,
+                    effectivePlan = effectivePlan,
                     myProperties = myProperties,
                     isBusy = isBusy,
                     onBack = { activeSubscreen = ProfileSubscreen.MENU },
@@ -252,6 +253,7 @@ fun ProfileAndProScreen(
             ProfileSubscreen.INFORMACION_CUENTA -> {
                 InformacionCuentaSubscreen(
                     profile = profile,
+                    effectivePlan = effectivePlan,
                     onBack = { activeSubscreen = ProfileSubscreen.MENU },
                     onSignOut = onSignOut,
                     onRequestDeleteAccount = { showDeleteConfirmDialog = true }
@@ -267,6 +269,7 @@ fun ProfileAndProScreen(
             ProfileSubscreen.CONFIGURACION -> {
                 ConfiguracionSubscreen(
                     profile = profile,
+                    effectivePlan = effectivePlan,
                     isBusy = isBusy,
                     onBack = { activeSubscreen = ProfileSubscreen.MENU },
                     onToggleExternalAgentMode = onToggleExternalAgentMode,
@@ -361,6 +364,7 @@ fun ProfileAndProScreen(
     if (showBecomeAdvisorDialog) {
         AdvisorMembershipPlansDialog(
             currentProfile = profile,
+            effectivePlan = effectivePlan,
             isBusy = isBusy,
             onRequestPlan = { chosenTier, paymentMethod, paymentReference ->
                 onRequestPlan(chosenTier, paymentMethod, paymentReference)
@@ -790,7 +794,7 @@ private fun ConvertiteEnProSubscreen(
 
                         if (isStaff) {
                             Text(
-                                text = "Membresía bonificada para personal · Participación 80%",
+                                text = "Membresía bonificada para personal · Participación ${effectivePlan.participationPercent}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Medium
@@ -822,7 +826,7 @@ private fun ConvertiteEnProSubscreen(
                             )
                             StatPill(
                                 label = "Comisión",
-                                value = if (isStaff) "80%" else (currentPlanSpec?.advisorParticipationPercent ?: "—"),
+                                value = effectivePlan.participationPercent,
                                 modifier = Modifier.weight(1f)
                             )
                             StatPill(

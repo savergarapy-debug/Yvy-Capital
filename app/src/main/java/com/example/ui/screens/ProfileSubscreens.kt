@@ -47,7 +47,7 @@ import androidx.compose.material.icons.filled.HomeWork
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KingBed
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.MovieCreation
 import androidx.compose.material.icons.filled.OutdoorGrill
 import androidx.compose.material.icons.filled.Payments
@@ -102,6 +102,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.model.AdvisorMemberships
+import com.example.data.model.EffectivePlan
 import com.example.data.model.Property
 import com.example.data.model.UserProfile
 import com.example.ui.components.YvyButton
@@ -443,6 +444,7 @@ private fun PersonalFieldReadRow(
 @Composable
 fun PublicarPropiedadSubscreen(
     profile: UserProfile?,
+    effectivePlan: EffectivePlan = EffectivePlan(),
     myProperties: List<Property>,
     isBusy: Boolean,
     onBack: () -> Unit,
@@ -475,10 +477,10 @@ fun PublicarPropiedadSubscreen(
     ) -> Unit
 ) {
     val context = LocalContext.current
-    val currentTier = profile?.planTier ?: AdvisorMemberships.TIER_FREE
+    val currentTier = effectivePlan.tier
     val currentPlanSpec = AdvisorMemberships.getSpec(currentTier)
-    val isSeniorMember = AdvisorMemberships.isSeniorTier(currentTier)
-    val canFeature = AdvisorMemberships.canFeatureForTier(currentTier)
+    val isSeniorMember = effectivePlan.isSenior
+    val canFeature = effectivePlan.canFeatureListings
 
     var showNewPropertyForm by remember { mutableStateOf(true) }
 
@@ -1210,7 +1212,7 @@ fun PublicarPropiedadSubscreen(
                             )
                         }
 
-                        if (currentTier == AdvisorMemberships.TIER_FREE) {
+                        if (!effectivePlan.canPublish) {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = YvyGoldAccent.copy(alpha = 0.16f),
@@ -1340,8 +1342,9 @@ fun PublicarPropiedadSubscreen(
 
             // Mis propiedades publicadas actualmente
             item {
+                val totalViews = myProperties.sumOf { it.viewsCount }
                 Text(
-                    text = "Mis publicaciones registradas (${myProperties.size})",
+                    text = "Mis publicaciones registradas (${myProperties.size}) • $totalViews visualizaciones totales",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 4.dp)
@@ -1418,6 +1421,45 @@ fun PublicarPropiedadSubscreen(
                                     }
                                 }
                             }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Visibility,
+                                        contentDescription = null,
+                                        tint = YvyForestPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "${prop.viewsCount} ${if (prop.viewsCount == 1L) "visualización" else "visualizaciones"}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = YvyForestPrimary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                if (prop.featured) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = YvyGoldAccent.copy(alpha = 0.2f)
+                                    ) {
+                                        Text(
+                                            text = "Destacada",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = YvyForestPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+
                             if (prop.amenities.isNotEmpty()) {
                                 Text(
                                     text = prop.amenities.joinToString(" • "),
@@ -1537,12 +1579,13 @@ private fun FeatureOptionSelectorRow(
 @Composable
 fun InformacionCuentaSubscreen(
     profile: UserProfile?,
+    effectivePlan: EffectivePlan = EffectivePlan(),
     onBack: () -> Unit,
     onSignOut: () -> Unit,
     onRequestDeleteAccount: () -> Unit
 ) {
     val authUser = remember { FirebaseAuth.getInstance().currentUser }
-    val currentTier = profile?.planTier ?: AdvisorMemberships.TIER_FREE
+    val currentTier = effectivePlan.tier
     val planSpec = AdvisorMemberships.getSpec(currentTier)
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1602,14 +1645,17 @@ fun InformacionCuentaSubscreen(
                         PersonalFieldReadRow(
                             icon = Icons.Default.WorkspacePremium,
                             label = "Membresía actual",
-                            value = planSpec?.let { "${it.name} (${it.priceFormatted})" }
-                                ?: "Cuenta Estándar Gratuita",
+                            value = if (effectivePlan.isStaff) {
+                                "Plan Senior · Personal Yvy Capital"
+                            } else {
+                                planSpec?.let { "${it.name} (${it.priceFormatted})" } ?: "Cuenta Estándar Gratuita"
+                            },
                             isEmpty = false
                         )
                         PersonalFieldReadRow(
                             icon = Icons.Default.Badge,
                             label = "Límite de publicaciones simultáneas",
-                            value = "${planSpec?.maxActiveListings ?: 0} publicaciones activas según tu plan",
+                            value = "${effectivePlan.maxActiveListings} publicaciones activas según tu plan",
                             isEmpty = false
                         )
                     }
@@ -1639,7 +1685,7 @@ fun InformacionCuentaSubscreen(
                                 .fillMaxWidth()
                                 .testTag("sign_out_btn")
                         ) {
-                            Icon(Icons.Default.Logout, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Cerrar Sesión")
                         }
@@ -1866,13 +1912,13 @@ fun ContactarIaSubscreen(
 @Composable
 fun ConfiguracionSubscreen(
     profile: UserProfile?,
+    effectivePlan: EffectivePlan = EffectivePlan(),
     isBusy: Boolean,
     onBack: () -> Unit,
     onToggleExternalAgentMode: (Boolean) -> Unit,
     onOpenPrivacyDialog: () -> Unit
 ) {
-    val currentTier = profile?.planTier ?: AdvisorMemberships.TIER_FREE
-    val supportsExternal = AdvisorMemberships.getSpec(currentTier)?.supportsExternalAgentMode == true
+    val supportsExternal = effectivePlan.supportsExternalAgentMode
 
     Column(modifier = Modifier.fillMaxSize()) {
         SubscreenTopBar(

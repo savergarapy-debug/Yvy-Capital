@@ -445,11 +445,22 @@ class YvyViewModel(
         }
     }
 
-    fun recordPropertyView(propertyId: String) {
-        if (propertyId.isBlank() || !viewedPropertyIdsInSession.add(propertyId)) return
+    fun recordPropertyView(propertyId: String, propertyOwnerId: String? = null) {
+        if (propertyId.isBlank()) return
+        val currentUid = currentUserId
+        if (currentUid.isNotBlank() && currentUid == propertyOwnerId) return
+        if (!viewedPropertyIdsInSession.add(propertyId)) return
         viewModelScope.launch {
-            repository.incrementPropertyViews(propertyId)
+            repository.incrementPropertyViews(
+                propertyId = propertyId,
+                currentUserId = currentUid,
+                propertyOwnerId = propertyOwnerId
+            )
         }
+    }
+
+    fun recordPropertyView(property: Property) {
+        recordPropertyView(property.id, property.agentId)
     }
 
     fun submitMembershipRequest(
@@ -620,7 +631,7 @@ class YvyViewModel(
                 verified = false,
                 viewsCount = 0L
             )
-            repository.createProperty(newProperty)
+            repository.createProperty(newProperty, currentPlan)
                 .onSuccess {
                     _isBusy.value = false
                     _actionMessage.value = "Propiedad publicada exitosamente en el catálogo de Yvy Capital."

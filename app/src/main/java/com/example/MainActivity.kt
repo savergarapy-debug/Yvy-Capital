@@ -391,9 +391,9 @@ fun YvyMainWorkspace(
     }
 
     LaunchedEffect(selectedProperty?.id) {
-        val propId = selectedProperty?.id
-        if (!propId.isNullOrBlank()) {
-            viewModel.recordPropertyView(propId)
+        val prop = selectedProperty
+        if (prop != null && prop.id.isNotBlank()) {
+            viewModel.recordPropertyView(prop)
         }
     }
 
@@ -497,6 +497,9 @@ fun YvyMainWorkspace(
                 Box(modifier = Modifier.weight(1f)) {
                     val activeProp = selectedProperty
                     if (activeProp != null) {
+                        androidx.compose.runtime.LaunchedEffect(activeProp.id) {
+                            viewModel.recordPropertyView(activeProp)
+                        }
                         val isStaffAdmin = staffRole?.equals("admin", ignoreCase = true) == true
                         PropertyDetailScreen(
                             property = activeProp,
